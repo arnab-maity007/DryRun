@@ -1,7 +1,7 @@
 const TokenType = {
     NUMBER: 'NUMBER', STRING_LITERAL: 'STRING_LITERAL', CHAR_LITERAL: 'CHAR_LITERAL', IDENTIFIER: 'IDENTIFIER',
     INT: 'INT', LONG: 'LONG', DOUBLE: 'DOUBLE', FLOAT: 'FLOAT', CHAR: 'CHAR', STRING: 'STRING', BOOL: 'BOOL', VOID: 'VOID',
-    SIGNED: 'SIGNED', UNSIGNED: 'UNSIGNED',
+    SIGNED: 'SIGNED', UNSIGNED: 'UNSIGNED', CONST: 'CONST',
     VECTOR: 'VECTOR', PAIR: 'PAIR', MAP: 'MAP', SET: 'SET', AUTO: 'AUTO',
     IF: 'IF', ELSE: 'ELSE', FOR: 'FOR', WHILE: 'WHILE', DO: 'DO', BREAK: 'BREAK', CONTINUE: 'CONTINUE', RETURN: 'RETURN', TRUE: 'TRUE', FALSE: 'FALSE',
     CIN: 'CIN', COUT: 'COUT', ENDL: 'ENDL', USING: 'USING', NAMESPACE: 'NAMESPACE',
@@ -22,8 +22,9 @@ const TokenType = {
 const KEYWORDS = {
     'int': TokenType.INT, 'long': TokenType.LONG, 'double': TokenType.DOUBLE, 'float': TokenType.FLOAT,
     'char': TokenType.CHAR, 'string': TokenType.STRING, 'bool': TokenType.BOOL, 'void': TokenType.VOID,
-    'signed': TokenType.SIGNED, 'unsigned': TokenType.UNSIGNED,
+    'signed': TokenType.SIGNED, 'unsigned': TokenType.UNSIGNED, 'const': TokenType.CONST,
     'vector': TokenType.VECTOR, 'pair': TokenType.PAIR, 'map': TokenType.MAP, 'set': TokenType.SET, 'auto': TokenType.AUTO,
+    'mt19937': TokenType.AUTO, 'mt19937_64': TokenType.AUTO,
     'if': TokenType.IF, 'else': TokenType.ELSE, 'for': TokenType.FOR, 'while': TokenType.WHILE, 'do': TokenType.DO,
     'break': TokenType.BREAK, 'continue': TokenType.CONTINUE, 'return': TokenType.RETURN,
     'true': TokenType.TRUE, 'false': TokenType.FALSE,

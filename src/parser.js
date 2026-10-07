@@ -59,44 +59,77 @@ function parse(tokens) {
         }
 
         // Could be function declaration or variable declaration
+        let hasConst = false;
+        if (peek().type === TokenType.CONST) {
+            hasConst = true;
+            pos++; // consume const just for checking, will be handled properly if we go down declaration
+        }
+
         if (isType(peek())) {
+            if (hasConst) pos--; // backtrack const so isType logic flow works
+            
             const savedPos = pos;
-            const typeStr = parseType();
+            
+            try {
+                if (match(TokenType.CONST)) {} // consume const if present
 
-            if (peek().type === TokenType.IDENTIFIER) {
-                const nameTok = consume(TokenType.IDENTIFIER, "Expected identifier");
+                const typeStr = parseType();
 
-                if (peek().type === TokenType.LPAREN) {
-                    // Function declaration with optional parameters
-                    const line = nameTok.line;
-                    consume(TokenType.LPAREN);
-                    const params = [];
-                    if (peek().type !== TokenType.RPAREN) {
-                        // Parse parameter list
-                        do {
-                            const paramType = parseType();
-                            const paramName = consume(TokenType.IDENTIFIER, "Expected parameter name");
-                            params.push({ type: paramType, name: paramName.value });
-                        } while (match(TokenType.COMMA));
+                if (peek().type === TokenType.IDENTIFIER) {
+                    const nameTok = consume(TokenType.IDENTIFIER, "Expected identifier");
+
+                    if (peek().type === TokenType.LPAREN) {
+                        // Function declaration with optional parameters
+                        const line = nameTok.line;
+                        consume(TokenType.LPAREN);
+                        const params = [];
+                        if (peek().type !== TokenType.RPAREN) {
+                            // Parse parameter list
+                            do {
+                                const paramType = parseType();
+                                const paramName = consume(TokenType.IDENTIFIER, "Expected parameter name");
+                                params.push({ type: paramType, name: paramName.value });
+                            } while (match(TokenType.COMMA));
+                        }
+                        consume(TokenType.RPAREN);
+                        const body = parseBlock();
+                        return { type: 'FunctionDeclaration', returnType: typeStr, name: nameTok.value, params, body, line };
+                    } else {
+                        // backtrack and parse as normal statement
+                        pos = savedPos;
+                        return parseStatement();
                     }
-                    consume(TokenType.RPAREN);
-                    const body = parseBlock();
-                    return { type: 'FunctionDeclaration', returnType: typeStr, name: nameTok.value, params, body, line };
                 } else {
-                    // backtrack and parse as normal statement
                     pos = savedPos;
                     return parseStatement();
                 }
-            } else {
+            } catch (e) {
+                // If it fails (e.g. it's a complex global initialization like mt19937 RNG(...)), skip it
                 pos = savedPos;
-                return parseStatement();
+                const line = peek().line;
+                while (peek().type !== TokenType.EOF && peek().type !== TokenType.SEMICOLON) {
+                    pos++;
+                }
+                if (peek().type === TokenType.SEMICOLON) pos++;
+                return { type: 'ExpressionStatement', expression: { type: 'StringLiteral', value: 'skipped unparseable global' }, line };
             }
         }
 
-        return parseStatement();
+        try {
+            return parseStatement();
+        } catch (e) {
+            // Fallback for any other top-level unparseable statement
+            const line = peek().line;
+            while (peek().type !== TokenType.EOF && peek().type !== TokenType.SEMICOLON && peek().type !== TokenType.RBRACE) {
+                pos++;
+            }
+            if (peek().type === TokenType.SEMICOLON || peek().type === TokenType.RBRACE) pos++;
+            return { type: 'ExpressionStatement', expression: { type: 'StringLiteral', value: 'skipped unparseable statement' }, line };
+        }
     }
 
     function isType(token) {
+        if (token.type === TokenType.CONST) return true;
         return [
             TokenType.INT, TokenType.LONG, TokenType.DOUBLE, TokenType.FLOAT,
             TokenType.CHAR, TokenType.STRING, TokenType.BOOL, TokenType.VOID,
@@ -105,6 +138,8 @@ function parse(tokens) {
     }
 
     function parseType() {
+        if (match(TokenType.CONST)) {} // Skip const modifier
+        
         const typeTok = match(TokenType.INT, TokenType.LONG, TokenType.DOUBLE, TokenType.FLOAT,
             TokenType.CHAR, TokenType.STRING, TokenType.BOOL, TokenType.VOID,
             TokenType.AUTO, TokenType.VECTOR, TokenType.SIGNED, TokenType.UNSIGNED);
@@ -187,7 +222,17 @@ function parse(tokens) {
         consume(TokenType.LBRACE);
         const body = [];
         while (peek().type !== TokenType.RBRACE && peek().type !== TokenType.EOF) {
-            body.push(parseStatement());
+            try {
+                body.push(parseStatement());
+            } catch (e) {
+                const errLine = peek().line;
+                // Skip to next statement boundary
+                while (peek().type !== TokenType.EOF && peek().type !== TokenType.SEMICOLON && peek().type !== TokenType.RBRACE) {
+                    pos++;
+                }
+                if (peek().type === TokenType.SEMICOLON) pos++;
+                body.push({ type: 'ExpressionStatement', expression: { type: 'StringLiteral', value: 'skipped inner statement' }, line: errLine });
+            }
         }
         consume(TokenType.RBRACE);
         return { type: 'Block', body, line };

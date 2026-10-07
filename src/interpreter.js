@@ -5,20 +5,7 @@ const { preprocess } = require('./preprocessor');
 class Interpreter {
     constructor(sourceCode, inputString) {
         this.originalSource = sourceCode;
-        // Inject standard macros to make CP code work out of the box
-        const standardMacros = `
-#define vi vector<int>
-#define vll vector<long long>
-#define pii pair<int,int>
-#define pll pair<long long, long long>
-#define pb push_back
-#define mp make_pair
-#define all(x) x.begin(), x.end()
-#define sz(x) (int)(x).size()
-#define f(i,a,b) for(int i=a; i<b; i++)
-#define rep(i,a,b) for(int i=a; i<b; i++)
-`;
-        this.processedSource = preprocess(standardMacros + "\n" + sourceCode);
+        this.processedSource = preprocess(sourceCode);
         this.tokens = tokenize(this.processedSource);
         this.ast = parse(this.tokens);
         this.inputTokens = inputString.trim().split(/\s+/).filter(t => t.length > 0);
@@ -30,8 +17,13 @@ class Interpreter {
         this.stepCount = 0;
         this.MAX_STEPS = 10000;
         
+        // User-defined functions: name -> { params, body, returnType, line }
         this.functions = new Map();
         
+        // Call stack tracking for recursion visualization
+        this.callStack = ['main()'];
+        
+        // Signals for control flow
         this.BREAK = Symbol('BREAK');
         this.CONTINUE = Symbol('CONTINUE');
         this.RETURN = Symbol('RETURN');
@@ -67,7 +59,8 @@ class Interpreter {
             variables: this.getVariablesSnapshot(),
             output: this.output,
             highlightVar,
-            highlightIndex
+            highlightIndex,
+            callStack: [...this.callStack]
         });
     }
 
@@ -89,7 +82,7 @@ class Interpreter {
                 return this.scopes[i].get(name);
             }
         }
-        throw new Error(`Variable ${name} is not defined`);
+        throw new Error(`Variable '${name}' is not defined`);
     }
 
     updateVariable(name, value) {
@@ -100,7 +93,7 @@ class Interpreter {
                 return;
             }
         }
-        throw new Error(`Variable ${name} is not defined`);
+        throw new Error(`Variable '${name}' is not defined`);
     }
 
     getDefaultValue(type) {
@@ -109,13 +102,15 @@ class Interpreter {
         if (type === 'char') return '\0';
         if (type === 'string') return "";
         if (type === 'bool') return false;
-        return null;
+        return 0;
     }
 
     run() {
-        this.execute(this.ast);
-        // If main wasn't executed during global scope traversal, execute it
-        if (!this.steps.some(s => s.description === 'Entering main()') && this.functions.has('main')) {
+        // First pass: collect all function declarations (don't execute anything)
+        this.collectFunctions(this.ast);
+        
+        // Then execute main
+        if (this.functions.has('main')) {
             const mainFunc = this.functions.get('main');
             this.addStep(mainFunc.line, 'skip', 'Entering main()');
             try {
@@ -123,8 +118,48 @@ class Interpreter {
             } catch (e) {
                 if (e !== this.RETURN) throw e;
             }
+        } else {
+            throw new Error("No main() function found. Make sure your code has 'int main()' or 'signed main()'.");
         }
+        
         return this.steps;
+    }
+
+    collectFunctions(node) {
+        if (!node) return;
+        if (node.type === 'Program') {
+            for (const stmt of node.body) {
+                if (stmt.type === 'FunctionDeclaration') {
+                    this.functions.set(stmt.name, stmt);
+                }
+                // Also handle top-level variable declarations (globals like const int mod = ...)
+                if (stmt.type === 'VariableDeclaration') {
+                    for (const decl of stmt.declarations) {
+                        let val = this.getDefaultValue(stmt.dataType);
+                        if (decl.initializer) {
+                            try { val = this.evaluate(decl.initializer); } catch(e) { /* skip */ }
+                        }
+                        this.declareVariable(decl.name, stmt.dataType, val);
+                    }
+                }
+                if (stmt.type === 'VectorDeclaration') {
+                    try {
+                        let size = 0;
+                        let fill = this.getDefaultValue(stmt.elementType);
+                        let valArray = [];
+                        if (stmt.sizeExpr) {
+                            size = this.evaluate(stmt.sizeExpr);
+                            if (stmt.fillExpr) fill = this.evaluate(stmt.fillExpr);
+                            for (let i = 0; i < size; i++) valArray.push(fill);
+                        } else if (stmt.initList) {
+                            valArray = stmt.initList.map(e => this.evaluate(e));
+                            size = valArray.length;
+                        }
+                        this.declareVariable(stmt.name, `vector<${stmt.elementType}>`, valArray, true, size);
+                    } catch(e) { /* skip */ }
+                }
+            }
+        }
     }
 
     execute(node) {
@@ -137,23 +172,19 @@ class Interpreter {
                 }
                 break;
                 
+            // Skip these silently — no steps generated
             case 'IncludeDirective':
-                this.addStep(node.line, 'skip', 'Preprocessor directive');
-                break;
-                
             case 'UsingDirective':
-                this.addStep(node.line, 'skip', 'Using namespace std');
                 break;
                 
+            // Skip function declarations — already collected
             case 'FunctionDeclaration':
-                this.functions.set(node.name, node);
-                // We don't execute main inline anymore, we run it at the end to allow global functions before main
                 break;
                 
             case 'Block':
                 this.pushScope();
                 for (const stmt of node.body) {
-                    this.execute(stmt);
+                    this.exec5ute(stmt);
                 }
                 this.popScope();
                 break;
@@ -176,9 +207,7 @@ class Interpreter {
                 
                 if (node.sizeExpr) {
                     size = this.evaluate(node.sizeExpr);
-                    if (node.fillExpr) {
-                        fill = this.evaluate(node.fillExpr);
-                    }
+                    if (node.fillExpr) fill = this.evaluate(node.fillExpr);
                     for (let i = 0; i < size; i++) valArray.push(fill);
                 } else if (node.initList) {
                     size = node.initList.length;
@@ -196,14 +225,13 @@ class Interpreter {
                 const valArray = new Array(size).fill(fill);
                 
                 this.declareVariable(node.name, `${node.elementType}[]`, valArray, true, size);
-                this.addStep(node.line, 'declare', `Declared array ${node.name} of size ${size}`, node.name);
+                this.addStep(node.line, 'declare', `Declared ${node.elementType}[${size}] ${node.name}`, node.name);
                 break;
             }
                 
             case 'CinStatement':
                 for (const target of node.targets) {
                     if (this.inputPos >= this.inputTokens.length) {
-                        // For CP, if no more input, they usually get 0 or keep going. We'll simulate 0.
                         this.inputTokens.push("0");
                     }
                     const token = this.inputTokens[this.inputPos++];
@@ -231,18 +259,21 @@ class Interpreter {
                 }
                 break;
                 
-            case 'CoutStatement':
+            case 'CoutStatement': {
+                let combinedOutput = '';
                 for (const expr of node.expressions) {
                     if (expr.type === 'Identifier' && expr.name === 'endl') {
                         this.output += '\n';
-                        this.addStep(node.line, 'output', `Output: endl`);
+                        combinedOutput += '\\n';
                     } else {
                         const val = this.evaluate(expr);
-                        this.output += val;
-                        this.addStep(node.line, 'output', `Output: ${val}`);
+                        this.output += String(val);
+                        combinedOutput += String(val);
                     }
                 }
+                this.addStep(node.line, 'output', `Output: ${combinedOutput}`);
                 break;
+            }
                 
             case 'Assignment':
                 this.executeAssignment(node.target, node.operator, node.value, node.line);
@@ -255,10 +286,10 @@ class Interpreter {
             case 'IfStatement': {
                 const cond = this.evaluate(node.condition);
                 if (cond) {
-                    this.addStep(node.line, 'condition-true', `If condition true`);
+                    this.addStep(node.line, 'condition-true', `If condition → true`);
                     this.execute(node.consequent);
                 } else {
-                    this.addStep(node.line, 'condition-false', `If condition false`);
+                    this.addStep(node.line, 'condition-false', `If condition → false`);
                     if (node.alternate) {
                         this.execute(node.alternate);
                     }
@@ -274,7 +305,7 @@ class Interpreter {
                     let cond = true;
                     if (node.condition) {
                         cond = this.evaluate(node.condition);
-                        this.addStep(node.condition.line || node.line, 'loop-check', `For loop: condition is ${cond}`);
+                        this.addStep(node.condition.line || node.line, 'loop-check', `For loop: condition → ${cond}`);
                     }
                     if (!cond) break;
                     
@@ -282,16 +313,13 @@ class Interpreter {
                         this.execute(node.body);
                     } catch (e) {
                         if (e === this.BREAK) break;
-                        if (e === this.CONTINUE) {
-                            // continue logic handles update below
-                        } else {
-                            throw e;
-                        }
+                        if (e === this.CONTINUE) { /* fall through to update */ }
+                        else throw e;
                     }
                     
                     if (node.update) {
                         this.evaluate(node.update);
-                        this.addStep(node.update.line || node.line, 'loop-update', `For loop update`);
+                        this.addStep(node.update.line || node.line, 'loop-update', `For loop: update`);
                     }
                 }
                 this.popScope();
@@ -300,7 +328,7 @@ class Interpreter {
             case 'WhileStatement':
                 while (true) {
                     const cond = this.evaluate(node.condition);
-                    this.addStep(node.line, 'loop-check', `While loop: condition is ${cond}`);
+                    this.addStep(node.line, 'loop-check', `While: condition → ${cond}`);
                     if (!cond) break;
                     
                     try {
@@ -323,11 +351,9 @@ class Interpreter {
                 throw this.RETURN;
                 
             case 'BreakStatement':
-                this.addStep(node.line, 'skip', 'Break loop');
                 throw this.BREAK;
                 
             case 'ContinueStatement':
-                this.addStep(node.line, 'skip', 'Continue loop');
                 throw this.CONTINUE;
         }
     }
@@ -341,11 +367,11 @@ class Interpreter {
             if (operator === '+=') newVal = v.value + val;
             else if (operator === '-=') newVal = v.value - val;
             else if (operator === '*=') newVal = v.value * val;
-            else if (operator === '/=') newVal = Math.floor(v.value / val);
+            else if (operator === '/=') newVal = (typeof v.value === 'number' && Number.isInteger(v.value)) ? Math.trunc(v.value / val) : v.value / val;
             else if (operator === '%=') newVal = v.value % val;
             
             this.updateVariable(target.name, newVal);
-            this.addStep(line, 'assign', `Set ${target.name} = ${newVal}`, target.name);
+            this.addStep(line, 'assign', `${target.name} = ${newVal}`, target.name);
             return newVal;
         } else if (target.type === 'ArrayAccess') {
             const name = target.object.name;
@@ -356,11 +382,11 @@ class Interpreter {
             if (operator === '+=') newVal = v.value[index] + val;
             else if (operator === '-=') newVal = v.value[index] - val;
             else if (operator === '*=') newVal = v.value[index] * val;
-            else if (operator === '/=') newVal = Math.floor(v.value[index] / val);
+            else if (operator === '/=') newVal = Math.trunc(v.value[index] / val);
             else if (operator === '%=') newVal = v.value[index] % val;
             
             v.value[index] = newVal;
-            this.addStep(line, 'assign', `Set ${name}[${index}] = ${newVal}`, name, index);
+            this.addStep(line, 'assign', `${name}[${index}] = ${newVal}`, name, index);
             return newVal;
         }
         throw new Error("Invalid assignment target");
@@ -381,8 +407,7 @@ class Interpreter {
                 try {
                     return this.getVariable(node.name).value;
                 } catch {
-                    // Preprocessor sometimes leaves unhandled stuff or functions used as pointers
-                    return null; 
+                    return null;
                 }
                 
             case 'ArrayAccess': {
@@ -404,7 +429,7 @@ class Interpreter {
                     case '+': return left + right;
                     case '-': return left - right;
                     case '*': return left * right;
-                    case '/': return Math.floor(left / right);
+                    case '/': return (typeof left === 'number' && Number.isInteger(left)) ? Math.trunc(left / right) : left / right;
                     case '%': return left % right;
                     case '==': return left == right;
                     case '!=': return left != right;
@@ -453,28 +478,24 @@ class Interpreter {
                 const callee = node.callee;
                 const args = node.arguments;
                 
-                // Built-in sort: sort(all(arr)) usually evaluates to sort(arr.begin(), arr.end())
+                // Built-in: sort
                 if (callee === 'sort') {
-                    // Heuristic: find the array name in the first argument
                     let arrName = null;
-                    if (args[0] && args[0].type === 'MethodCall') {
-                        arrName = args[0].object.name;
-                    } else if (args[0] && args[0].type === 'Identifier') {
-                        arrName = args[0].name;
-                    }
+                    if (args[0] && args[0].type === 'MethodCall') arrName = args[0].object.name;
+                    else if (args[0] && args[0].type === 'Identifier') arrName = args[0].name;
                     if (arrName) {
                         try {
                             const v = this.getVariable(arrName);
                             if (v.isArray) {
                                 v.value.sort((a, b) => a - b);
-                                this.addStep(node.line, 'assign', `Sorted array ${arrName}`, arrName);
+                                this.addStep(node.line, 'assign', `Sorted ${arrName}`, arrName);
                             }
                         } catch(e) {}
                     }
                     return null;
                 }
                 
-                // Built-in swap: swap(a, b)
+                // Built-in: swap
                 if (callee === 'swap') {
                     if (args.length === 2) {
                         let refA = this.resolveReference(args[0]);
@@ -483,13 +504,13 @@ class Interpreter {
                             let temp = refA.get();
                             refA.set(refB.get());
                             refB.set(temp);
-                            this.addStep(node.line, 'assign', `Swapped ${refA.name} and ${refB.name}`);
+                            this.addStep(node.line, 'assign', `Swapped ${refA.name} ↔ ${refB.name}`);
                         }
                     }
                     return null;
                 }
                 
-                // Built-in max/min
+                // Built-in: max, min, abs
                 if (callee === 'max' && args.length === 2) return Math.max(this.evaluate(args[0]), this.evaluate(args[1]));
                 if (callee === 'min' && args.length === 2) return Math.min(this.evaluate(args[0]), this.evaluate(args[1]));
                 if (callee === 'abs' && args.length === 1) return Math.abs(this.evaluate(args[0]));
@@ -499,6 +520,10 @@ class Interpreter {
                     const func = this.functions.get(callee);
                     const evalArgs = args.map(a => this.evaluate(a));
                     
+                    // Build call signature for display
+                    const callSig = `${callee}(${evalArgs.join(', ')})`;
+                    this.callStack.push(callSig);
+                    
                     this.pushScope();
                     for (let i = 0; i < func.params.length; i++) {
                         const pName = func.params[i].name;
@@ -507,7 +532,7 @@ class Interpreter {
                         this.declareVariable(pName, pType, pVal);
                     }
                     
-                    this.addStep(node.line, 'skip', `Calling function ${callee}()`);
+                    this.addStep(node.line, 'call', `Calling ${callSig}`);
                     
                     try {
                         this.execute(func.body);
@@ -515,17 +540,20 @@ class Interpreter {
                         if (e === this.RETURN) {
                             const ret = this.returnValue;
                             this.popScope();
+                            this.callStack.pop();
+                            this.addStep(node.line, 'call-return', `${callee}() returned ${ret !== null ? ret : 'void'}`);
                             return ret;
                         }
                         throw e;
                     }
                     
                     this.popScope();
+                    this.callStack.pop();
+                    this.addStep(node.line, 'call-return', `${callee}() returned`);
                     return null;
                 }
                 
-                // Fallback for unknown functions
-                this.addStep(node.line, 'skip', `Called unknown function ${callee}`);
+                // Unknown functions — skip silently
                 return null;
             }
             
@@ -540,17 +568,17 @@ class Interpreter {
                                 const val = this.evaluate(node.arguments[0]);
                                 v.value.push(val);
                                 v.size = v.value.length;
-                                this.addStep(node.line, 'assign', `Pushed ${val} to ${objName}`, objName, v.size - 1);
+                                this.addStep(node.line, 'assign', `${objName}.push_back(${val})`, objName, v.size - 1);
                                 return null;
                             } else if (method === 'pop_back') {
                                 v.value.pop();
                                 v.size = v.value.length;
-                                this.addStep(node.line, 'assign', `Popped from ${objName}`, objName);
+                                this.addStep(node.line, 'assign', `${objName}.pop_back()`, objName);
                                 return null;
                             } else if (method === 'size') {
                                 return v.value.length;
                             } else if (method === 'begin' || method === 'end') {
-                                return null; // Used in sort, handled directly there
+                                return null;
                             }
                         }
                     } catch (e) {}
@@ -558,7 +586,7 @@ class Interpreter {
                 return null;
             }
         }
-        throw new Error(`Unknown expression type ${node.type}`);
+        throw new Error(`Unknown expression type: ${node.type}`);
     }
 
     resolveReference(node) {
