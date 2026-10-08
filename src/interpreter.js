@@ -1,13 +1,23 @@
-const { tokenize } = require('./tokenizer');
-const { parse } = require('./parser');
-const { preprocess } = require('./preprocessor');
 
 class Interpreter {
-    constructor(sourceCode, inputString) {
+    constructor(sourceCode, inputString, language = 'cpp') {
         this.originalSource = sourceCode;
-        this.processedSource = preprocess(sourceCode);
-        this.tokens = tokenize(this.processedSource);
-        this.ast = parse(this.tokens);
+        this.language = language;
+        
+        if (language === 'cpp') {
+            const { preprocess } = require('./preprocessor');
+            const { tokenize } = require('./tokenizer');
+            const { parse } = require('./parser');
+            this.processedSource = preprocess(sourceCode);
+            this.tokens = tokenize(this.processedSource);
+            this.ast = parse(this.tokens);
+        } else if (language === 'python') {
+            const { parse } = require('./python-parser');
+            this.ast = parse(sourceCode);
+        } else if (language === 'java') {
+            const { parse } = require('./java-parser');
+            this.ast = parse(sourceCode);
+        }
         this.inputTokens = inputString.trim().split(/\s+/).filter(t => t.length > 0);
         this.inputPos = 0;
         
@@ -184,7 +194,7 @@ class Interpreter {
             case 'Block':
                 this.pushScope();
                 for (const stmt of node.body) {
-                    this.exec5ute(stmt);
+                    this.execute(stmt);
                 }
                 this.popScope();
                 break;

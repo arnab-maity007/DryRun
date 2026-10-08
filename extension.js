@@ -49,10 +49,7 @@ function activate(context) {
         if (['py'].includes(ext)) language = 'python';
         if (['java'].includes(ext)) language = 'java';
 
-        if (language !== 'cpp') {
-            vscode.window.showWarningMessage(`DryRun: ${language.toUpperCase()} support coming soon! Currently only C++ is supported.`);
-            return;
-        }
+
 
         // Create a Webview Panel split to the side
         const panel = vscode.window.createWebviewPanel(
@@ -118,7 +115,7 @@ function activate(context) {
 
                         try {
                             // Run the interpreter
-                            const interpreter = new Interpreter(sourceCode, message.input || '');
+                            const interpreter = new Interpreter(sourceCode, message.input || '', language);
                             const steps = interpreter.run();
 
                             if (steps.length === 0) {
