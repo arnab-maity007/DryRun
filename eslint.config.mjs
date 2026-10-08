@@ -1,16 +1,18 @@
-import globals from "globals";
-
 export default [{
     files: ["**/*.js"],
     languageOptions: {
         globals: {
-            ...globals.commonjs,
-            ...globals.node,
-            ...globals.mocha,
+            require: "readonly",
+            module: "readonly",
+            exports: "readonly",
+            console: "readonly",
+            process: "readonly",
+            __dirname: "readonly",
+            suite: "readonly",
+            test: "readonly"
         },
-
         ecmaVersion: 2022,
-        sourceType: "module",
+        sourceType: "commonjs",
     },
 
     rules: {
