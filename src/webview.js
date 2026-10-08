@@ -339,11 +339,35 @@ function getWebviewContent() {
             0% { background-color: var(--name-color); color: #fff; }
             100% { background-color: var(--input-bg); color: var(--value-color); }
         }
+        @keyframes delta-flash {
+            0% { box-shadow: 0 0 0 3px rgba(50, 205, 50, 0.8), 0 0 15px rgba(50, 205, 50, 0.4); }
+            100% { box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        }
+        @keyframes delta-value-flash {
+            0% { background-color: rgba(50, 205, 50, 0.4); color: #fff; }
+            100% { background-color: transparent; color: var(--value-color); }
+        }
         .highlight {
             animation: highlight-glow 1s ease-out;
         }
         .cell-highlight {
             animation: cell-glow 1s ease-out;
+        }
+        .delta-changed {
+            animation: delta-flash 1.2s ease-out;
+        }
+        .delta-value {
+            animation: delta-value-flash 1.2s ease-out;
+        }
+        .change-badge {
+            display: inline-block;
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #32cd32;
+            margin-left: 6px;
+            vertical-align: middle;
+            animation: delta-value-flash 1.2s ease-out;
         }
 
         /* Call Stack & Output */
@@ -682,8 +706,22 @@ function getWebviewContent() {
             return \`<div class="var-value-scalar">\${displayVal}</div>\`;
         }
 
+        function didValueChange(prev, curr) {
+            if (prev === undefined || prev === null) return curr !== undefined && curr !== null;
+            if (typeof prev !== typeof curr) return true;
+            if (Array.isArray(prev) && Array.isArray(curr)) {
+                if (prev.length !== curr.length) return true;
+                return prev.some((v, i) => v !== curr[i]);
+            }
+            if (typeof prev === 'object' && typeof curr === 'object') {
+                return JSON.stringify(prev) !== JSON.stringify(curr);
+            }
+            return prev !== curr;
+        }
+
         function renderMemory(state, prevStep) {
             const vars = state.variables || {};
+            const prevVars = prevStep ? (prevStep.variables || {}) : {};
             
             Object.keys(vars).forEach(v => declaredVariables.add(v));
             
@@ -713,13 +751,23 @@ function getWebviewContent() {
                 const isHighlighted = (state.highlightVar === varName);
                 const highlightIndex = state.highlightIndex;
 
+                // ── Delta Detection ──
+                const prevVal = prevVars[varName];
+                const valueChanged = isActive && prevVal && didValueChange(prevVal.value, v.value);
+
                 const card = document.createElement('div');
-                card.className = \`var-card \${!isActive ? 'out-of-scope' : ''} \${isHighlighted ? 'highlight' : ''}\`;
+                let cardClass = 'var-card';
+                if (!isActive) cardClass += ' out-of-scope';
+                if (isHighlighted) cardClass += ' highlight';
+                if (valueChanged) cardClass += ' delta-changed';
+                card.className = cardClass;
+                
+                let changeBadge = valueChanged ? '<span class="change-badge"></span>' : '';
                 
                 let content = \`
                     <div class="var-header">
                         <span class="var-type">\${v.type || 'auto'}</span>
-                        <span class="var-name">\${varName}</span>
+                        <span class="var-name">\${varName}\${changeBadge}</span>
                     </div>
                 \`;
 
@@ -754,7 +802,7 @@ function getWebviewContent() {
         }
     </script>
 </body>
-</html>`;
+</html>\`;
 }
 
 module.exports = { getWebviewContent };
