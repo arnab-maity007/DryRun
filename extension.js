@@ -329,10 +329,11 @@ function convertPythonVariables(pyVars) {
                 isMap: true,
             };
         } else if (val && typeof val === 'object' && val.__type__) {
-            // Custom object (TreeNode, ListNode) — show as scalar reference for now
+            // Custom object (TreeNode, ListNode) - keep object for graph rendering
             result[name] = {
                 type: val.__type__,
-                value: `→ ${val.__type__}(${val.val ?? val.value ?? val.data ?? '?'})`,
+                value: val,
+                isGraphNode: true
             };
         } else {
             result[name] = {
