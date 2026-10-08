@@ -1,65 +1,46 @@
-# dryrun README
+# DryRun
 
-This is the README for your extension "dryrun". After writing up a brief description, we recommend including the following sections.
-
-## Features
-
-Describe specific features of your extension including screenshots of your extension in action. Image paths are relative to this README file.
-
-For example if there is an image subfolder under your extension project workspace:
-
-\!\[feature X\]\(images/feature-x.png\)
-
-> Tip: Many popular extensions utilize animations. This is an excellent way to show off your extension! We recommend short, focused animations that are easy to follow.
-
-## Requirements
-
-If you have any requirements or dependencies, add a section describing those and how to install and configure them.
-
-## Extension Settings
-
-Include if your extension adds any VS Code settings through the `contributes.configuration` extension point.
-
-For example:
-
-This extension contributes the following settings:
-
-* `myExtension.enable`: Enable/disable this extension.
-* `myExtension.thing`: Set to `blah` to do something.
-
-## Known Issues
-
-Calling out known issues can help limit users opening duplicate issues against your extension.
-
-## Release Notes
-
-Users appreciate release notes as you update your extension.
-
-### 1.0.0
-
-Initial release of ...
-
-### 1.0.1
-
-Fixed issue #.
-
-### 1.1.0
-
-Added features X, Y, and Z.
+**DryRun** is a VS Code extension designed specifically for Competitive Programmers and DSA learners. It brings your code to life by visualizing its execution step by step, helping you understand complex logic, debug tricky edge cases, and visualize data structures intuitively—right inside your editor.
 
 ---
 
-## Working with Markdown
+## Features
 
-You can author your README using Visual Studio Code.  Here are some useful editor keyboard shortcuts:
+- **Step by Step Visualization**: Watch your code execute line by line. The editor dynamically highlights the current executing statement and keeps track of your execution path.
+- **Rich Memory Rendering**: Variables aren't just text. DryRun visually renders scalars, arrays, vectors, maps, sets, stacks, and queues.
+- **Call Stack Tracking**: Easily trace recursive functions. The call stack visually builds up as deep recursive calls are made and collapses as they return.
+- **Multi-Language Support**: Currently it supports only **C++** but will add support of other languages soon.
+- **Interactive Controls**: Step backward or forward at your own pace, or hit 'Play' to watch the execution flow smoothly with an adjustable speed slider.
 
-* Split the editor (`Cmd+\` on macOS or `Ctrl+\` on Windows and Linux)
-* Toggle preview (`Shift+Cmd+V` on macOS or `Shift+Ctrl+V` on Windows and Linux)
-* Press `Ctrl+Space` (Windows, Linux, macOS) to see a list of Markdown snippets
+---
 
-## For more information
+## How to run 
+The extension isnt launched at production yet . Although you can run it locally . 
+1. Clone the repo in your dekstop 
+2. press f5 , if on mac press fn+f5 , it will open you a new window . open the c++ file you want to debug.
+3. press ctrl+shift+P , if in mac then cmd+shift+P 
+4. dry run will pop up on the right of your laptop . use it and let us know the bugs :D . 
 
-* [Visual Studio Code's Markdown Support](http://code.visualstudio.com/docs/languages/markdown)
-* [Markdown Syntax Reference](https://help.github.com/articles/markdown-basics/)
+---
+##  Supported Data Structures
 
-**Enjoy!**
+DryRun goes beyond basic variables. It automatically formats and renders:
+- **Primitives**: `int`, `float`, `double`, `string`, `bool`, `char`
+- **1D/2D Arrays & Vectors / Lists**
+- **Maps / Dictionaries**
+- **Sets**
+- **Stacks** (Vertical visualization with a `top` pointer)
+- **Queues** (Horizontal visualization with `front` and `back` pointers)
+
+---
+
+## Release Notes
+
+### v0.0.1 (Version-0)
+- Initial preview release of DryRun.
+- Core interpreter engine for C++.
+- Support for complex data structures (Maps, Sets, Stacks, Queues).
+- Interactive playback controls and F5 debugging compatibility.
+
+---
+**Will meet with updated and strong versions soon**
