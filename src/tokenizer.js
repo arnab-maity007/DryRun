@@ -24,6 +24,8 @@ const KEYWORDS = {
     'char': TokenType.CHAR, 'string': TokenType.STRING, 'bool': TokenType.BOOL, 'void': TokenType.VOID,
     'signed': TokenType.SIGNED, 'unsigned': TokenType.UNSIGNED, 'const': TokenType.CONST,
     'vector': TokenType.VECTOR, 'pair': TokenType.PAIR, 'map': TokenType.MAP, 'set': TokenType.SET, 'auto': TokenType.AUTO,
+    'stack': TokenType.VECTOR, 'queue': TokenType.VECTOR, 'deque': TokenType.VECTOR, 'priority_queue': TokenType.VECTOR,
+    'unordered_map': TokenType.MAP, 'unordered_set': TokenType.SET,
     'mt19937': TokenType.AUTO, 'mt19937_64': TokenType.AUTO,
     'if': TokenType.IF, 'else': TokenType.ELSE, 'for': TokenType.FOR, 'while': TokenType.WHILE, 'do': TokenType.DO,
     'break': TokenType.BREAK, 'continue': TokenType.CONTINUE, 'return': TokenType.RETURN,

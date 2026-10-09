@@ -133,7 +133,8 @@ function parse(tokens) {
         return [
             TokenType.INT, TokenType.LONG, TokenType.DOUBLE, TokenType.FLOAT,
             TokenType.CHAR, TokenType.STRING, TokenType.BOOL, TokenType.VOID,
-            TokenType.VECTOR, TokenType.AUTO, TokenType.SIGNED, TokenType.UNSIGNED
+            TokenType.VECTOR, TokenType.AUTO, TokenType.SIGNED, TokenType.UNSIGNED,
+            TokenType.MAP, TokenType.SET
         ].includes(token.type);
     }
 
@@ -142,7 +143,8 @@ function parse(tokens) {
         
         const typeTok = match(TokenType.INT, TokenType.LONG, TokenType.DOUBLE, TokenType.FLOAT,
             TokenType.CHAR, TokenType.STRING, TokenType.BOOL, TokenType.VOID,
-            TokenType.AUTO, TokenType.VECTOR, TokenType.SIGNED, TokenType.UNSIGNED);
+            TokenType.AUTO, TokenType.VECTOR, TokenType.SIGNED, TokenType.UNSIGNED,
+            TokenType.MAP, TokenType.SET);
         if (!typeTok) throw new Error("Expected type at line " + peek().line);
 
         // 'signed' alone → treat as 'int', 'signed main' → 'int'
@@ -257,6 +259,38 @@ function parse(tokens) {
         consume(TokenType.FOR);
         consume(TokenType.LPAREN);
         
+        // Peek ahead to check if range-based for loop
+        let isRangeBased = false;
+        let scanOffset = 0;
+        while (peek(scanOffset).type !== TokenType.RPAREN && peek(scanOffset).type !== TokenType.EOF) {
+            if (peek(scanOffset).type === TokenType.COLON) {
+                isRangeBased = true;
+                break;
+            }
+            if (peek(scanOffset).type === TokenType.SEMICOLON) {
+                break;
+            }
+            scanOffset++;
+        }
+
+        if (isRangeBased) {
+            if (match(TokenType.CONST)) {}
+            const typeStr = parseType();
+            
+            let isReference = false;
+            if (peek().type === TokenType.BITWISE_AND) {
+                consume(TokenType.BITWISE_AND);
+                isReference = true;
+            }
+
+            const nameTok = consume(TokenType.IDENTIFIER);
+            consume(TokenType.COLON);
+            const containerExpr = parseExpression();
+            consume(TokenType.RPAREN);
+            const body = parseStatement();
+            return { type: 'RangeForStatement', variableType: typeStr, isReference, variableName: nameTok.value, container: containerExpr, body, line };
+        }
+
         let init = null;
         if (peek().type !== TokenType.SEMICOLON) {
             if (isType(peek())) {
@@ -356,10 +390,21 @@ function parse(tokens) {
         const line = peek().line;
         const typeStr = parseType();
 
-        // Vector declaration
-        if (typeStr === 'vector') {
+        // Container declarations (vector, stack, queue, deque, priority_queue, set, map)
+        if (['vector', 'stack', 'queue', 'deque', 'priority_queue', 'set', 'map', 'unordered_map', 'unordered_set'].includes(typeStr)) {
             consume(TokenType.LESS);
-            const elementType = parseType();
+            
+            let elementType = null;
+            let keyType = null;
+            
+            if (['map', 'unordered_map'].includes(typeStr)) {
+                keyType = parseType();
+                consume(TokenType.COMMA);
+                elementType = parseType(); // this is the valueType
+            } else {
+                elementType = parseType();
+            }
+            
             consume(TokenType.GREATER);
             const nameTok = consume(TokenType.IDENTIFIER);
             
@@ -386,7 +431,16 @@ function parse(tokens) {
             }
 
             consume(TokenType.SEMICOLON);
-            return { type: 'VectorDeclaration', elementType, name: nameTok.value, sizeExpr, fillExpr, initList, line };
+            
+            // Format type string for the interpreter's isStackType, isMapType etc.
+            let fullTypeStr;
+            if (['map', 'unordered_map'].includes(typeStr)) {
+                fullTypeStr = `${typeStr}<${keyType},${elementType}>`;
+            } else {
+                fullTypeStr = `${typeStr}<${elementType}>`;
+            }
+
+            return { type: 'VectorDeclaration', containerType: fullTypeStr, elementType, name: nameTok.value, sizeExpr, fillExpr, initList, line };
         }
 
         const nameTok = consume(TokenType.IDENTIFIER);
