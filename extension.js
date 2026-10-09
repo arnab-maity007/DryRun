@@ -70,8 +70,8 @@ function activate(context) {
         // ─── Create or reuse webview panel ──────────────────────────
         if (!currentPanel) {
             currentPanel = vscode.window.createWebviewPanel(
-                'dryrunVisualizer',
-                'DryRun: Visualizer',
+                "dryrunVisualizer",
+                "DryRun: Visualizer",
                 vscode.ViewColumn.Two,
                 { enableScripts: true, retainContextWhenHidden: true }
             );
@@ -85,34 +85,30 @@ function activate(context) {
                 editor.setDecorations(activeLineDecoration, []);
                 editor.setDecorations(deltaFlashDecoration, []);
             });
+
+            currentPanel.webview.html = getWebviewContent();
+
+            currentPanel.webview.onDidReceiveMessage(
+                (message) => {
+                    switch (message.command) {
+                        case "ready":
+                            runCode(editor, filePath, language, "", context);
+                            break;
+                        case "requestRun":
+                            runCode(editor, filePath, language, message.input || "", context);
+                            break;
+                        case "stepChanged":
+                            highlightLine(editor, message.line);
+                            break;
+                    }
+                },
+                undefined,
+                context.subscriptions
+            );
+        } else {
+            currentPanel.reveal(vscode.ViewColumn.Two);
+            runCode(editor, filePath, language, "", context);
         }
-
-        // Load the rich webview from src/webview.js
-        currentPanel.webview.html = getWebviewContent();
-
-        // ─── Message Bridge: Webview ↔ Extension ────────────────────
-        currentPanel.webview.onDidReceiveMessage(
-            (message) => {
-                switch (message.command) {
-                    case 'ready':
-                        // Webview loaded — auto-run with empty input for the active file
-                        runCode(editor, filePath, language, '', context);
-                        break;
-
-                    case 'requestRun':
-                        // User clicked "Run" with custom input
-                        runCode(editor, filePath, language, message.input || '', context);
-                        break;
-
-                    case 'stepChanged':
-                        // User navigated to a step — highlight the line in the editor
-                        highlightLine(editor, message.line);
-                        break;
-                }
-            },
-            undefined,
-            context.subscriptions
-        );
     });
 
     context.subscriptions.push(disposable);

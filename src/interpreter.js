@@ -47,8 +47,14 @@ class Interpreter {
             for (const [key, val] of scope.entries()) {
                 snapshot[key] = {
                     type: val.type,
-                    value: Array.isArray(val.value) ? [...val.value] : val.value,
+                    value: Array.isArray(val.value) ? [...val.value] : 
+                           (val.value && typeof val.value === 'object' && !Array.isArray(val.value)) 
+                               ? { ...val.value } : val.value,
                     isArray: val.isArray,
+                    isMap: val.isMap,
+                    isSet: val.isSet,
+                    isStack: val.isStack,
+                    isQueue: val.isQueue,
                     size: val.size
                 };
             }
@@ -82,8 +88,8 @@ class Interpreter {
         this.scopes.pop();
     }
 
-    declareVariable(name, type, value, isArray = false, size = null) {
-        this.scopes[this.scopes.length - 1].set(name, { type, value, isArray, size });
+    declareVariable(name, type, value, isArray = false, size = null, extra = {}) {
+        this.scopes[this.scopes.length - 1].set(name, { type, value, isArray, size, ...extra });
     }
 
     getVariable(name) {
@@ -107,12 +113,35 @@ class Interpreter {
     }
 
     getDefaultValue(type) {
-        if (['int', 'long', 'long long', 'unsigned int', 'unsigned long', 'unsigned long long'].includes(type)) return 0;
-        if (['double', 'float'].includes(type)) return 0.0;
-        if (type === 'char') return '\0';
-        if (type === 'string') return "";
-        if (type === 'bool') return false;
+        if (!type) return 0;
+        const t = type.toLowerCase();
+        if (['int', 'long', 'long long', 'unsigned int', 'unsigned long', 'unsigned long long', 'short'].includes(t)) return 0;
+        if (['double', 'float'].includes(t)) return 0.0;
+        if (t === 'char') return '\0';
+        if (t === 'string' || t === 'std::string') return "";
+        if (t === 'bool') return false;
         return 0;
+    }
+
+    // ── Container-type detection ─────────────────────────────────────────────
+    isMapType(type) {
+        if (!type) return false;
+        const t = type.toLowerCase();
+        return t.includes('map') || t.includes('unordered_map') || t.includes('dict');
+    }
+    isSetType(type) {
+        if (!type) return false;
+        const t = type.toLowerCase();
+        return t.includes('set') || t.includes('unordered_set');
+    }
+    isStackType(type) {
+        if (!type) return false;
+        return type.toLowerCase().includes('stack');
+    }
+    isQueueType(type) {
+        if (!type) return false;
+        const t = type.toLowerCase();
+        return t.includes('queue') || t.includes('deque') || t.includes('priority_queue');
     }
 
     run() {
@@ -142,7 +171,6 @@ class Interpreter {
                 if (stmt.type === 'FunctionDeclaration') {
                     this.functions.set(stmt.name, stmt);
                 }
-                // Also handle top-level variable declarations (globals like const int mod = ...)
                 if (stmt.type === 'VariableDeclaration') {
                     for (const decl of stmt.declarations) {
                         let val = this.getDefaultValue(stmt.dataType);
@@ -153,23 +181,57 @@ class Interpreter {
                     }
                 }
                 if (stmt.type === 'VectorDeclaration') {
-                    try {
-                        let size = 0;
-                        let fill = this.getDefaultValue(stmt.elementType);
-                        let valArray = [];
-                        if (stmt.sizeExpr) {
-                            size = this.evaluate(stmt.sizeExpr);
-                            if (stmt.fillExpr) fill = this.evaluate(stmt.fillExpr);
-                            for (let i = 0; i < size; i++) valArray.push(fill);
-                        } else if (stmt.initList) {
-                            valArray = stmt.initList.map(e => this.evaluate(e));
-                            size = valArray.length;
-                        }
-                        this.declareVariable(stmt.name, `vector<${stmt.elementType}>`, valArray, true, size);
-                    } catch(e) { /* skip */ }
+                    try { this._executeVectorDeclaration(stmt); } catch(e) { /* skip */ }
                 }
             }
         }
+    }
+
+    // ── Shared vector/container declaration logic ────────────────────────────
+    _executeVectorDeclaration(node) {
+        const typeStr = node.containerType || `vector<${node.elementType}>`;
+        
+        // Stack
+        if (this.isStackType(typeStr)) {
+            this.declareVariable(node.name, typeStr, [], true, 0, { isStack: true });
+            this.addStep(node.line, 'declare', `Declared ${typeStr} ${node.name}`, node.name);
+            return;
+        }
+        // Queue / deque / priority_queue
+        if (this.isQueueType(typeStr)) {
+            this.declareVariable(node.name, typeStr, [], true, 0, { isQueue: true });
+            this.addStep(node.line, 'declare', `Declared ${typeStr} ${node.name}`, node.name);
+            return;
+        }
+        // Map / unordered_map
+        if (this.isMapType(typeStr)) {
+            this.declareVariable(node.name, typeStr, {}, false, null, { isMap: true });
+            this.addStep(node.line, 'declare', `Declared ${typeStr} ${node.name}`, node.name);
+            return;
+        }
+        // Set / unordered_set
+        if (this.isSetType(typeStr)) {
+            this.declareVariable(node.name, typeStr, [], true, 0, { isSet: true });
+            this.addStep(node.line, 'declare', `Declared ${typeStr} ${node.name}`, node.name);
+            return;
+        }
+
+        // Regular vector/array
+        let size = 0;
+        let fill = this.getDefaultValue(node.elementType);
+        let valArray = [];
+        
+        if (node.sizeExpr) {
+            size = this.evaluate(node.sizeExpr);
+            if (node.fillExpr) fill = this.evaluate(node.fillExpr);
+            for (let i = 0; i < size; i++) valArray.push(fill);
+        } else if (node.initList) {
+            size = node.initList.length;
+            valArray = node.initList.map(e => this.evaluate(e));
+        }
+        
+        this.declareVariable(node.name, typeStr, valArray, true, size);
+        this.addStep(node.line, 'declare', `Declared ${typeStr} ${node.name} of size ${size}`, node.name);
     }
 
     execute(node) {
@@ -193,10 +255,13 @@ class Interpreter {
                 
             case 'Block':
                 this.pushScope();
-                for (const stmt of node.body) {
-                    this.execute(stmt);
+                try {
+                    for (const stmt of node.body) {
+                        this.execute(stmt);
+                    }
+                } finally {
+                    this.popScope();
                 }
-                this.popScope();
                 break;
                 
             case 'VariableDeclaration':
@@ -210,24 +275,9 @@ class Interpreter {
                 }
                 break;
                 
-            case 'VectorDeclaration': {
-                let size = 0;
-                let fill = this.getDefaultValue(node.elementType);
-                let valArray = [];
-                
-                if (node.sizeExpr) {
-                    size = this.evaluate(node.sizeExpr);
-                    if (node.fillExpr) fill = this.evaluate(node.fillExpr);
-                    for (let i = 0; i < size; i++) valArray.push(fill);
-                } else if (node.initList) {
-                    size = node.initList.length;
-                    valArray = node.initList.map(e => this.evaluate(e));
-                }
-                
-                this.declareVariable(node.name, `vector<${node.elementType}>`, valArray, true, size);
-                this.addStep(node.line, 'declare', `Declared vector<${node.elementType}> ${node.name} of size ${size}`, node.name);
+            case 'VectorDeclaration':
+                this._executeVectorDeclaration(node);
                 break;
-            }
                 
             case 'ArrayDeclaration': {
                 const size = this.evaluate(node.sizeExpr);
@@ -249,8 +299,9 @@ class Interpreter {
                     if (target.type === 'Identifier') {
                         const v = this.getVariable(target.name);
                         let parsedVal = token;
-                        if (v.type.includes('int') || v.type.includes('long')) parsedVal = parseInt(token, 10);
-                        else if (['double', 'float'].includes(v.type)) parsedVal = parseFloat(token);
+                        const t = (v.type || '').toLowerCase();
+                        if (t.includes('int') || t.includes('long') || t.includes('short')) parsedVal = parseInt(token, 10);
+                        else if (t === 'double' || t === 'float') parsedVal = parseFloat(token);
                         
                         this.updateVariable(target.name, parsedVal);
                         this.addStep(node.line, 'input', `Read input: ${target.name} = ${parsedVal}`, target.name);
@@ -260,8 +311,9 @@ class Interpreter {
                         const v = this.getVariable(name);
                         
                         let parsedVal = token;
-                        if (v.type.includes('int') || v.type.includes('long')) parsedVal = parseInt(token, 10);
-                        else if (v.type.includes('double') || v.type.includes('float')) parsedVal = parseFloat(token);
+                        const t = (v.type || '').toLowerCase();
+                        if (t.includes('int') || t.includes('long')) parsedVal = parseInt(token, 10);
+                        else if (t.includes('double') || t.includes('float')) parsedVal = parseFloat(token);
                         
                         v.value[index] = parsedVal;
                         this.addStep(node.line, 'input', `Read input: ${name}[${index}] = ${parsedVal}`, name, index);
@@ -307,32 +359,72 @@ class Interpreter {
                 break;
             }
                 
-            case 'ForStatement':
-                this.pushScope();
-                if (node.init) this.execute(node.init);
-                
-                while (true) {
-                    let cond = true;
-                    if (node.condition) {
-                        cond = this.evaluate(node.condition);
-                        this.addStep(node.condition.line || node.line, 'loop-check', `For loop: condition → ${cond}`);
-                    }
-                    if (!cond) break;
-                    
-                    try {
-                        this.execute(node.body);
-                    } catch (e) {
-                        if (e === this.BREAK) break;
-                        if (e === this.CONTINUE) { /* fall through to update */ }
-                        else throw e;
-                    }
-                    
-                    if (node.update) {
-                        this.evaluate(node.update);
-                        this.addStep(node.update.line || node.line, 'loop-update', `For loop: update`);
+            
+            case 'RangeForStatement': {
+                const containerVar = this.evaluate(node.container);
+                // in some cases evaluate() might return the variable's value array/object, 
+                // but let's check what evaluate() actually returns.
+                // Oh wait, for node.container, evaluate() returns the value of the container.
+                // If it's a map or set or vector, evaluate() returns the .value array or object.
+                let items = [];
+                if (Array.isArray(containerVar)) {
+                    items = containerVar;
+                } else if (containerVar && typeof containerVar === 'object') {
+                    for (let key in containerVar) {
+                        items.push({ first: isNaN(Number(key)) ? key : Number(key), second: containerVar[key] });
                     }
                 }
-                this.popScope();
+
+                this.pushScope();
+                try {
+                    for (let i = 0; i < items.length; i++) {
+                        const item = items[i];
+                        // If it's a map pair, it might need to act as an object
+                        this.declareVariable(node.variableName, node.variableType, item, false);
+                        this.addStep(node.line, 'loop-check', `Range for: ${node.variableName}`);
+                        
+                        try {
+                            this.execute(node.body);
+                        } catch (e) {
+                            if (e === this.BREAK) break;
+                            if (e === this.CONTINUE) { /* fall through */ }
+                            else throw e;
+                        }
+                    }
+                } finally {
+                    this.popScope();
+                }
+                break;
+            }
+            case 'ForStatement':
+                this.pushScope();
+                try {
+                    if (node.init) this.execute(node.init);
+                    
+                    while (true) {
+                        let cond = true;
+                        if (node.condition) {
+                            cond = this.evaluate(node.condition);
+                            this.addStep(node.condition.line || node.line, 'loop-check', `For loop: condition → ${cond}`);
+                        }
+                        if (!cond) break;
+                        
+                        try {
+                            this.execute(node.body);
+                        } catch (e) {
+                            if (e === this.BREAK) break;
+                            if (e === this.CONTINUE) { /* fall through to update */ }
+                            else throw e;
+                        }
+                        
+                        if (node.update) {
+                            this.evaluate(node.update);
+                            this.addStep(node.update.line || node.line, 'loop-update', `For loop: update`);
+                        }
+                    }
+                } finally {
+                    this.popScope();
+                }
                 break;
                 
             case 'WhileStatement':
@@ -372,7 +464,15 @@ class Interpreter {
         const val = this.evaluate(valueNode);
         
         if (target.type === 'Identifier') {
-            const v = this.getVariable(target.name);
+            let v;
+            try {
+                v = this.getVariable(target.name);
+            } catch (e) {
+                // Auto-declare (Python style)
+                this.declareVariable(target.name, 'auto', val);
+                this.addStep(line, 'assign', `${target.name} = ${val}`, target.name);
+                return val;
+            }
             let newVal = val;
             if (operator === '+=') newVal = v.value + val;
             else if (operator === '-=') newVal = v.value - val;
@@ -387,6 +487,17 @@ class Interpreter {
             const name = target.object.name;
             const index = this.evaluate(target.index);
             const v = this.getVariable(name);
+            
+            // Map/dict access via [] operator
+            if (v.isMap) {
+                let newVal = val;
+                if (operator === '+=') newVal = (v.value[index] || 0) + val;
+                else if (operator === '-=') newVal = (v.value[index] || 0) - val;
+                else if (operator === '*=') newVal = (v.value[index] || 0) * val;
+                v.value[String(index)] = newVal;
+                this.addStep(line, 'assign', `${name}[${index}] = ${newVal}`, name);
+                return newVal;
+            }
             
             let newVal = val;
             if (operator === '+=') newVal = v.value[index] + val;
@@ -420,15 +531,31 @@ class Interpreter {
                     return null;
                 }
                 
-            case 'ArrayAccess': {
-                const arr = this.evaluate(node.object);
-                const index = this.evaluate(node.index);
-                if (Array.isArray(arr)) return arr[index];
-                
-                if (node.object.type === 'Identifier') {
-                    const v = this.getVariable(node.object.name);
-                    return v.value[index];
+            
+            case 'MemberAccess': {
+                const obj = this.evaluate(node.object);
+                if (obj && typeof obj === 'object') {
+                    return obj[node.member];
                 }
+                if (typeof obj === 'string' && node.member === 'length') return obj.length;
+                return null;
+            }
+            case 'ArrayAccess': {
+                const index = this.evaluate(node.index);
+                if (node.object.type === 'Identifier') {
+                    try {
+                        const v = this.getVariable(node.object.name);
+                        // Map [] lookup
+                        if (v.isMap) {
+                            return v.value[String(index)] ?? 0;
+                        }
+                        return v.value[index];
+                    } catch (e) {
+                        return null;
+                    }
+                }
+                const arr = this.evaluate(node.object);
+                if (Array.isArray(arr)) return arr[index];
                 throw new Error("Invalid array access");
             }
                 
@@ -439,7 +566,7 @@ class Interpreter {
                     case '+': return left + right;
                     case '-': return left - right;
                     case '*': return left * right;
-                    case '/': return (typeof left === 'number' && Number.isInteger(left)) ? Math.trunc(left / right) : left / right;
+                    case '/': return (typeof left === 'number' && Number.isInteger(left) && typeof right === 'number' && Number.isInteger(right)) ? Math.trunc(left / right) : left / right;
                     case '%': return left % right;
                     case '==': return left == right;
                     case '!=': return left != right;
@@ -449,6 +576,11 @@ class Interpreter {
                     case '>=': return left >= right;
                     case '&&': return left && right;
                     case '||': return left || right;
+                    case '&': return left & right;
+                    case '|': return left | right;
+                    case '^': return left ^ right;
+                    case '<<': return left << right;
+                    case '>>': return left >> right;
                 }
                 throw new Error(`Unknown operator ${node.operator}`);
             }
@@ -458,6 +590,7 @@ class Interpreter {
                 if (node.operator === '-') return -op;
                 if (node.operator === '+') return +op;
                 if (node.operator === '!') return !op;
+                if (node.operator === '~') return ~op;
                 throw new Error(`Unknown unary operator ${node.operator}`);
             }
                 
@@ -471,9 +604,9 @@ class Interpreter {
                     return node.prefix ? newVal : oldVal;
                 } else if (node.argument.type === 'ArrayAccess') {
                     const name = node.argument.object.name;
-                    const index = this.evaluate(node.argument.index);
+                    const index = String(this.evaluate(node.argument.index));
                     const v = this.getVariable(name);
-                    const oldVal = v.value[index];
+                    let oldVal = v.isMap ? (v.value[index] || 0) : v.value[index];
                     const newVal = node.operator === '++' ? oldVal + 1 : oldVal - 1;
                     v.value[index] = newVal;
                     return node.prefix ? newVal : oldVal;
@@ -520,17 +653,27 @@ class Interpreter {
                     return null;
                 }
                 
-                // Built-in: max, min, abs
-                if (callee === 'max' && args.length === 2) return Math.max(this.evaluate(args[0]), this.evaluate(args[1]));
-                if (callee === 'min' && args.length === 2) return Math.min(this.evaluate(args[0]), this.evaluate(args[1]));
+                // Built-in: max, min, abs, sqrt, pow, ceil, floor, log
+                if (callee === 'max' && args.length >= 2) return Math.max(this.evaluate(args[0]), this.evaluate(args[1]));
+                if (callee === 'min' && args.length >= 2) return Math.min(this.evaluate(args[0]), this.evaluate(args[1]));
                 if (callee === 'abs' && args.length === 1) return Math.abs(this.evaluate(args[0]));
+                if (callee === 'sqrt') return Math.sqrt(this.evaluate(args[0]));
+                if (callee === 'pow') return Math.pow(this.evaluate(args[0]), this.evaluate(args[1]));
+                if (callee === 'ceil') return Math.ceil(this.evaluate(args[0]));
+                if (callee === 'floor') return Math.floor(this.evaluate(args[0]));
+                if (callee === 'log') return Math.log(this.evaluate(args[0]));
+                if (callee === 'log2') return Math.log2(this.evaluate(args[0]));
+                if (callee === '__gcd' || callee === 'gcd') {
+                    let a = Math.abs(this.evaluate(args[0])), b = Math.abs(this.evaluate(args[1]));
+                    while (b) { [a, b] = [b, a % b]; }
+                    return a;
+                }
 
                 // User-defined function
                 if (this.functions.has(callee)) {
                     const func = this.functions.get(callee);
                     const evalArgs = args.map(a => this.evaluate(a));
                     
-                    // Build call signature for display
                     const callSig = `${callee}(${evalArgs.join(', ')})`;
                     this.callStack.push(callSig);
                     
@@ -544,6 +687,10 @@ class Interpreter {
                     
                     this.addStep(node.line, 'call', `Calling ${callSig}`);
                     
+                    // ── BUG FIX: save/restore returnValue so recursive calls don't clobber it ──
+                    const savedReturnValue = this.returnValue;
+                    this.returnValue = null;
+                    
                     try {
                         this.execute(func.body);
                     } catch (e) {
@@ -552,14 +699,17 @@ class Interpreter {
                             this.popScope();
                             this.callStack.pop();
                             this.addStep(node.line, 'call-return', `${callee}() returned ${ret !== null ? ret : 'void'}`);
+                            this.returnValue = savedReturnValue; // restore parent frame's value
                             return ret;
                         }
+                        this.returnValue = savedReturnValue;
                         throw e;
                     }
                     
                     this.popScope();
                     this.callStack.pop();
                     this.addStep(node.line, 'call-return', `${callee}() returned`);
+                    this.returnValue = savedReturnValue;
                     return null;
                 }
                 
@@ -573,6 +723,103 @@ class Interpreter {
                     const method = node.method;
                     try {
                         const v = this.getVariable(objName);
+
+                        // ── Stack methods ─────────────────────────────────────────
+                        if (v.isStack) {
+                            if (method === 'push') {
+                                const val = this.evaluate(node.arguments[0]);
+                                v.value.push(val);
+                                v.size = v.value.length;
+                                this.addStep(node.line, 'assign', `${objName}.push(${val})`, objName);
+                                return null;
+                            } else if (method === 'pop') {
+                                v.value.pop();
+                                v.size = v.value.length;
+                                this.addStep(node.line, 'assign', `${objName}.pop()`, objName);
+                                return null;
+                            } else if (method === 'top') {
+                                return v.value.length > 0 ? v.value[v.value.length - 1] : null;
+                            } else if (method === 'empty') {
+                                return v.value.length === 0;
+                            } else if (method === 'size') {
+                                return v.value.length;
+                            }
+                        }
+
+                        // ── Queue methods ─────────────────────────────────────────
+                        if (v.isQueue) {
+                            if (method === 'push') {
+                                const val = this.evaluate(node.arguments[0]);
+                                v.value.push(val);
+                                v.size = v.value.length;
+                                this.addStep(node.line, 'assign', `${objName}.push(${val})`, objName);
+                                return null;
+                            } else if (method === 'pop') {
+                                v.value.shift();
+                                v.size = v.value.length;
+                                this.addStep(node.line, 'assign', `${objName}.pop()`, objName);
+                                return null;
+                            } else if (method === 'front') {
+                                return v.value.length > 0 ? v.value[0] : null;
+                            } else if (method === 'back') {
+                                return v.value.length > 0 ? v.value[v.value.length - 1] : null;
+                            } else if (method === 'empty') {
+                                return v.value.length === 0;
+                            } else if (method === 'size') {
+                                return v.value.length;
+                            }
+                        }
+
+                        // ── Set methods ───────────────────────────────────────────
+                        if (v.isSet) {
+                            if (method === 'insert') {
+                                const val = this.evaluate(node.arguments[0]);
+                                if (!v.value.includes(val)) {
+                                    v.value.push(val);
+                                    v.value.sort((a, b) => a - b);
+                                }
+                                v.size = v.value.length;
+                                this.addStep(node.line, 'assign', `${objName}.insert(${val})`, objName);
+                                return null;
+                            } else if (method === 'erase') {
+                                const val = this.evaluate(node.arguments[0]);
+                                const idx = v.value.indexOf(val);
+                                if (idx !== -1) v.value.splice(idx, 1);
+                                v.size = v.value.length;
+                                this.addStep(node.line, 'assign', `${objName}.erase(${val})`, objName);
+                                return null;
+                            } else if (method === 'count' || method === 'find') {
+                                const val = this.evaluate(node.arguments[0]);
+                                return v.value.includes(val) ? 1 : 0;
+                            } else if (method === 'size') {
+                                return v.value.length;
+                            } else if (method === 'empty') {
+                                return v.value.length === 0;
+                            }
+                        }
+
+                        // ── Map methods ───────────────────────────────────────────
+                        if (v.isMap) {
+                            if (method === 'count' || method === 'find') {
+                                const key = String(this.evaluate(node.arguments[0]));
+                                return key in v.value ? 1 : 0;
+                            } else if (method === 'erase') {
+                                const key = String(this.evaluate(node.arguments[0]));
+                                delete v.value[key];
+                                this.addStep(node.line, 'assign', `${objName}.erase(${key})`, objName);
+                                return null;
+                            } else if (method === 'size') {
+                                return Object.keys(v.value).length;
+                            } else if (method === 'empty') {
+                                return Object.keys(v.value).length === 0;
+                            } else if (method === 'clear') {
+                                v.value = {};
+                                this.addStep(node.line, 'assign', `${objName}.clear()`, objName);
+                                return null;
+                            }
+                        }
+
+                        // ── Vector/Array methods ──────────────────────────────────
                         if (v.isArray) {
                             if (method === 'push_back' || method === 'pb') {
                                 const val = this.evaluate(node.arguments[0]);
@@ -587,6 +834,17 @@ class Interpreter {
                                 return null;
                             } else if (method === 'size') {
                                 return v.value.length;
+                            } else if (method === 'clear') {
+                                v.value = [];
+                                v.size = 0;
+                                this.addStep(node.line, 'assign', `${objName}.clear()`, objName);
+                                return null;
+                            } else if (method === 'empty') {
+                                return v.value.length === 0;
+                            } else if (method === 'back') {
+                                return v.value[v.value.length - 1];
+                            } else if (method === 'front') {
+                                return v.value[0];
                             } else if (method === 'begin' || method === 'end') {
                                 return null;
                             }
