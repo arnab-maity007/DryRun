@@ -7,402 +7,173 @@ function getWebviewContent() {
     <title>DryRun Visualizer</title>
     <style>
         :root {
-            --bg-color: var(--vscode-editor-background);
-            --fg-color: var(--vscode-editor-foreground);
-            --border-color: var(--vscode-panel-border);
-            --input-bg: var(--vscode-input-background);
-            --input-fg: var(--vscode-input-foreground);
-            --button-bg: var(--vscode-button-background);
-            --button-fg: var(--vscode-button-foreground);
-            --button-hover: var(--vscode-button-hoverBackground);
-            --card-bg: var(--vscode-editorWidget-background);
-            --card-border: var(--vscode-widget-border);
-            --type-color: var(--vscode-textPreformat-foreground, #6a9955);
-            --name-color: var(--vscode-symbolIcon-variableForeground, #4fc1ff);
-            --value-color: var(--vscode-textBlockQuote-foreground, #ce9178);
-            --highlight-glow: var(--vscode-editor-selectionBackground);
-            --error-bg: var(--vscode-inputValidation-errorBackground);
-            --error-border: var(--vscode-inputValidation-errorBorder);
-            --font-mono: var(--vscode-editor-font-family, "Consolas", "Courier New", monospace);
+            --bg-color: var(--vscode-editor-background, #1e1e1e);
+            --fg-color: var(--vscode-editor-foreground, #cccccc);
+            --border-color: var(--vscode-panel-border, #444444);
+            --card-bg: var(--vscode-editorWidget-background, #252526);
+            --highlight-bg: var(--vscode-editor-selectionBackground, #264f78);
+            --name-color: var(--vscode-symbolIcon-variableForeground, #75beff);
+            --type-color: var(--vscode-symbolIcon-classForeground, #ee9d28);
+            --value-color: var(--vscode-terminal-ansiGreen, #89d185);
+            --font-mono: var(--vscode-editor-font-family, Consolas, 'Courier New', monospace);
             --radius: 6px;
         }
-
         body {
-            font-family: var(--vscode-font-family, "Segoe UI", Tahoma, Geneva, Verdana, sans-serif);
+            margin: 0; padding: 0;
             background-color: var(--bg-color);
             color: var(--fg-color);
-            padding: 16px;
-            margin: 0;
-            display: flex;
-            flex-direction: column;
+            font-family: var(--vscode-font-family, -apple-system, BlinkMacSystemFont, sans-serif);
             height: 100vh;
+            display: flex;
+            overflow: hidden;
             box-sizing: border-box;
-            overflow-y: auto;
         }
-
-        .header {
-            font-size: 1.2em;
-            font-weight: 600;
-            margin-bottom: 12px;
-            display: flex;
-            align-items: center;
-            gap: 8px;
-        }
-
-        .section {
-            border: 1px solid var(--border-color);
-            border-radius: var(--radius);
-            padding: 12px;
-            margin-bottom: 12px;
-            background: var(--card-bg);
-        }
-
-        /* Input Panel */
-        #input-panel {
-            transition: all 0.3s ease;
-        }
-        #input-panel.collapsed #input-area {
-            display: none;
-        }
-        #input-area {
-            display: flex;
-            flex-direction: column;
-            gap: 8px;
-            margin-bottom: 8px;
-        }
-        textarea {
-            background-color: var(--input-bg);
-            color: var(--input-fg);
-            border: 1px solid var(--border-color);
-            border-radius: 4px;
-            padding: 8px;
-            font-family: var(--font-mono);
-            min-height: 60px;
-            resize: vertical;
-        }
+        .header { font-weight: bold; font-size: 1.2em; margin-bottom: 12px; display: flex; align-items: center; gap: 8px; }
+        .section { margin-bottom: 16px; display: flex; flex-direction: column; }
+        
         button {
-            background-color: var(--button-bg);
-            color: var(--button-fg);
-            border: none;
-            border-radius: 4px;
-            padding: 6px 12px;
-            cursor: pointer;
-            font-weight: 600;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            gap: 4px;
-            transition: background-color 0.2s;
+            background: var(--vscode-button-background, #0e639c);
+            color: var(--vscode-button-foreground, #ffffff);
+            border: none; border-radius: 4px; padding: 6px 12px; cursor: pointer;
         }
-        button:hover {
-            background-color: var(--button-hover);
-        }
-        .header-btn {
-            background: transparent;
-            color: var(--fg-color);
-            border: 1px solid var(--border-color);
-            font-size: 0.9em;
-            padding: 4px 8px;
-        }
-        .header-btn:hover {
-            background: var(--button-hover);
-        }
-
-        /* Error Panel */
-        #error-panel {
-            display: none;
-            background-color: var(--error-bg);
-            border: 1px solid var(--error-border);
-            color: var(--fg-color);
-        }
-        .error-header {
-            font-weight: bold;
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            margin-bottom: 4px;
-        }
-
-        /* Controls */
-        #controls-panel {
-            display: flex;
-            align-items: center;
-            gap: 12px;
-            flex-wrap: wrap;
-        }
-        .control-group {
-            display: flex;
-            align-items: center;
-            gap: 4px;
-        }
-        input[type="range"] {
-            width: 100px;
-        }
-        .status-text {
+        button:hover { background: var(--vscode-button-hoverBackground, #1177bb); }
+        button.icon-btn { padding: 4px 8px; background: var(--card-bg); border: 1px solid var(--border-color); color: var(--fg-color); }
+        button.icon-btn:hover { background: var(--highlight-bg); }
+        
+        input, select, textarea {
+            background: var(--vscode-input-background, #3c3c3c);
+            color: var(--vscode-input-foreground, #cccccc);
+            border: 1px solid var(--vscode-input-border, transparent);
+            border-radius: 4px; padding: 6px;
             font-family: var(--font-mono);
-            font-size: 0.9em;
-            margin-left: auto;
-            color: var(--type-color);
         }
-
-        /* Step Info */
-        #step-info {
-            font-family: var(--font-mono);
-            background: var(--input-bg);
-            border-left: 4px solid var(--name-color);
-        }
-
-        /* Memory Panel */
-        #memory-panel {
-            flex-grow: 1;
-            display: flex;
-            flex-wrap: wrap;
-            gap: 16px;
-            align-items: flex-start;
-            align-content: flex-start;
+        
+        /* Layout */
+        #left-sidebar {
+            width: 260px; min-width: 220px; max-width: 320px;
+            border-right: 1px solid var(--border-color);
+            padding: 12px;
+            display: flex; flex-direction: column;
             overflow-y: auto;
         }
-        .var-card {
-            background-color: var(--bg-color);
-            border: 1px solid var(--card-border);
+        #main-view {
+            flex-grow: 1; display: flex; flex-direction: column;
+            padding: 12px; background: var(--bg-color);
+            min-width: 0; /* flex bug */
+        }
+        
+        /* Left Sidebar Cards */
+        .panel {
+            background: var(--card-bg);
+            border: 1px solid var(--border-color);
             border-radius: var(--radius);
-            padding: 8px;
-            min-width: 100px;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-            transition: transform 0.2s, box-shadow 0.2s;
+            margin-bottom: 16px;
+            overflow: hidden;
+            display: flex; flex-direction: column;
         }
-        .var-card.out-of-scope {
-            opacity: 0.5;
-            filter: grayscale(100%);
-        }
-        .var-header {
-            display: flex;
-            justify-content: space-between;
-            font-size: 0.85em;
-            margin-bottom: 6px;
+        .panel-header {
+            background: rgba(0,0,0,0.15);
+            padding: 8px 12px;
+            font-weight: 600; font-size: 0.9em;
             border-bottom: 1px solid var(--border-color);
-            padding-bottom: 4px;
+            display: flex; justify-content: space-between; align-items: center;
         }
-        .var-type {
-            color: var(--type-color);
-            font-family: var(--font-mono);
-        }
-        .var-name {
-            color: var(--name-color);
-            font-weight: bold;
-            font-family: var(--font-mono);
-        }
+        .panel-content { padding: 12px; }
         
-        /* Scalars */
-        .var-value-scalar {
-            font-family: var(--font-mono);
-            font-size: 1.5em;
-            text-align: center;
-            color: var(--value-color);
-            padding: 4px;
-        }
+        /* Variables */
+        .var-card { margin-bottom: 8px; }
+        .var-header { display: flex; gap: 8px; margin-bottom: 4px; font-family: var(--font-mono); font-size: 0.9em; }
+        .var-type { color: var(--type-color); font-size: 0.85em; opacity: 0.8; }
+        .var-name { color: var(--name-color); font-weight: bold; }
+        .var-value-scalar { color: var(--value-color); font-family: var(--font-mono); font-weight: bold; font-size: 1.2em; background: rgba(0,0,0,0.2); padding: 4px 8px; border-radius: 4px; display: inline-block; }
         
-        /* Arrays */
-        .var-value-array {
-            display: flex;
-            gap: 4px;
-            overflow-x: auto;
-            padding-bottom: 4px;
-        }
-        .array-cell-container {
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-        }
+        /* Arrays & Structures */
+        .var-value-array { display: flex; flex-wrap: wrap; gap: 4px; }
+        .array-cell-container { display: flex; flex-direction: column; align-items: center; }
         .array-cell {
-            border: 1px solid var(--border-color);
-            min-width: 44px;
-            height: 36px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-family: var(--font-mono);
-            color: var(--value-color);
-            background: var(--input-bg);
+            background: var(--bg-color); border: 1px solid var(--border-color);
+            padding: 4px; min-width: 24px; text-align: center;
+            font-family: var(--font-mono); color: var(--value-color); font-weight: bold;
             border-radius: 4px;
         }
-        .array-index {
-            font-size: 0.7em;
-            color: var(--type-color);
-            margin-top: 2px;
+        .array-index { font-size: 0.7em; color: var(--fg-color); opacity: 0.5; margin-top: 2px; }
+        
+        /* History Items */
+        .history-item {
+            padding: 4px 8px; cursor: pointer; border-radius: 4px; margin-bottom: 2px;
+            white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
         }
+        .history-item:hover { background: var(--card-bg); }
+        .history-item.active { background: var(--highlight-bg); border-left: 3px solid var(--name-color); padding-left: 5px; }
 
-        /* Map Table */
-        .map-table {
-            border-collapse: collapse;
-            width: 100%;
-            margin-top: 4px;
-            font-family: var(--font-mono);
-            font-size: 0.9em;
+        /* Animations */
+        @keyframes flash {
+            0% { box-shadow: 0 0 8px #d7ba7d; border-color: #d7ba7d; }
+            100% { box-shadow: none; border-color: var(--border-color); }
         }
-        .map-table th, .map-table td {
-            border: 1px solid var(--border-color);
-            padding: 4px 8px;
-            text-align: center;
-        }
-        .map-table th {
-            background-color: var(--input-bg);
-            color: var(--type-color);
-        }
-        .map-table tr:nth-child(even) {
-            background-color: rgba(0, 0, 0, 0.05);
+        .delta-changed .var-value-scalar, .delta-changed .array-cell {
+            animation: flash 1.5s ease-out;
         }
         
-        /* Set Badges */
-        .set-container {
+        .hidden { display: none !important; }
+        
+        
+        /* Responsive Layout */
+        #main-view-inner {
             display: flex;
-            flex-wrap: wrap;
-            gap: 6px;
-            padding: 4px 0;
-            align-items: center;
+            flex-grow: 1;
+            gap: 16px;
+            min-height: 0;
+            flex-direction: row;
         }
-        .set-badge {
-            background-color: var(--input-bg);
-            color: var(--value-color);
-            border: 1px solid var(--border-color);
-            border-radius: 12px;
-            padding: 2px 8px;
-            font-family: var(--font-mono);
-            font-size: 0.9em;
-        }
-
-        /* Stack */
-        .stack-container {
+        #history-panel {
+            width: 280px;
+            min-width: 250px;
+            margin-bottom: 0;
             display: flex;
             flex-direction: column;
-            align-items: center;
-            gap: 2px;
-            margin-top: 4px;
-        }
-        .stack-cell-wrapper {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-        }
-        .stack-cell {
-            border: 1px solid var(--name-color);
-            min-width: 44px;
-            height: 30px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-family: var(--font-mono);
-            color: var(--value-color);
-            background: var(--input-bg);
-            border-radius: 2px;
-        }
-        .stack-top-label {
-            font-size: 0.8em;
-            color: var(--type-color);
-            font-family: var(--font-mono);
-        }
-
-        /* Queue */
-        .queue-container {
-            display: flex;
-            align-items: center;
-            gap: 4px;
-            margin-top: 4px;
-            overflow-x: auto;
-            padding-bottom: 4px;
-        }
-        .queue-label {
-            font-size: 0.8em;
-            color: var(--type-color);
-            font-family: var(--font-mono);
-            white-space: nowrap;
-        }
-        .queue-cell {
-            border: 1px solid var(--border-color);
-            min-width: 40px;
-            height: 30px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-family: var(--font-mono);
-            color: var(--value-color);
-            background: var(--input-bg);
-            border-radius: 4px;
-        }
-
-        /* Highlight Animations */
-        @keyframes highlight-glow {
-            0% { box-shadow: 0 0 0 2px var(--name-color), 0 0 10px var(--name-color); }
-            100% { box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
-        }
-        @keyframes cell-glow {
-            0% { background-color: var(--name-color); color: #fff; }
-            100% { background-color: var(--input-bg); color: var(--value-color); }
-        }
-        @keyframes delta-flash {
-            0% { box-shadow: 0 0 0 3px rgba(50, 205, 50, 0.8), 0 0 15px rgba(50, 205, 50, 0.4); }
-            100% { box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
-        }
-        @keyframes delta-value-flash {
-            0% { background-color: rgba(50, 205, 50, 0.4); color: #fff; }
-            100% { background-color: transparent; color: var(--value-color); }
-        }
-        .highlight {
-            animation: highlight-glow 1s ease-out;
-        }
-        .cell-highlight {
-            animation: cell-glow 1s ease-out;
-        }
-        .delta-changed {
-            animation: delta-flash 1.2s ease-out;
-        }
-        .delta-value {
-            animation: delta-value-flash 1.2s ease-out;
-        }
-        .change-badge {
-            display: inline-block;
-            width: 8px;
-            height: 8px;
-            border-radius: 50%;
-            background: #32cd32;
-            margin-left: 6px;
-            vertical-align: middle;
-            animation: delta-value-flash 1.2s ease-out;
-        }
-
-        /* Call Stack & Output */
-        .bottom-panel {
-            font-family: var(--font-mono);
-        }
-        .breadcrumb {
-            color: var(--name-color);
-            display: inline-flex;
-            flex-wrap: wrap;
-            gap: 8px;
-            align-items: center;
-        }
-        .breadcrumb-item::after {
-            content: "→";
-            color: var(--fg-color);
-            margin-left: 8px;
-        }
-        .breadcrumb-item:last-child::after {
-            content: "";
         }
         
-        #output-area {
-            white-space: pre-wrap;
-            color: var(--value-color);
-            min-height: 40px;
+        @media (max-width: 900px) {
+            #main-view-inner {
+                flex-direction: column;
+            }
+            #history-panel {
+                width: 100%;
+                min-height: 150px;
+                flex-grow: 0;
+            }
+        }
+        @media (max-width: 650px) {
+            body {
+                flex-direction: column;
+            }
+            #left-sidebar {
+                width: 100% !important;
+                max-width: none !important;
+                height: 300px;
+                flex-shrink: 0;
+                border-right: none !important;
+                border-bottom: 1px solid var(--border-color);
+            }
+            #main-view {
+                width: 100%;
+            }
         }
 
-        .empty-state {
-            text-align: center;
-            padding: 40px;
-            color: var(--type-color);
-            font-style: italic;
-            width: 100%;
+            #history-panel {
+                width: 100%;
+                min-height: 150px;
+                flex-grow: 0;
+            }
         }
+        
+        /* Modern Scrollbars */
+        ::-webkit-scrollbar { width: 8px; height: 8px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: rgba(128, 128, 128, 0.3); border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: rgba(128, 128, 128, 0.5); }
+
         /* Graph View */
         .visual-node {
             position: absolute; display: flex; flex-direction: column; align-items: center; justify-content: center;
@@ -419,88 +190,123 @@ function getWebviewContent() {
             align-items: center; gap: 4px; white-space: nowrap; pointer-events: none;
         }
         .pointer-label { background: var(--name-color); color: var(--bg-color); font-size: 11px; padding: 2px 6px; border-radius: 8px; font-family: monospace; font-weight: bold; }
-        
-        .hidden { display: none !important; }
     </style>
 </head>
 <body>
-    <div class="header">🔬 DryRun Visualizer</div>
 
-    <!-- Input Panel -->
-    <div id="input-panel" class="section">
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
-            <div style="font-weight: 600;">📥 Sample Input</div>
-            <button id="toggle-input-btn" class="header-btn">Collapse</button>
+    <!-- Left Sidebar -->
+    <div id="left-sidebar">
+        <div class="header">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--name-color)" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
+            DryRun
         </div>
-        <div id="input-area">
-            <textarea id="sample-input" placeholder="Enter standard input here..."></textarea>
-            <button id="run-btn">▶ Run</button>
-        </div>
-    </div>
 
-    <!-- Error Panel -->
-    <div id="error-panel" class="section">
-        <div class="error-header">⚠️ Error</div>
-        <div id="error-msg"></div>
-        <div id="error-line" style="font-family: var(--font-mono); font-size: 0.9em; margin-top: 4px;"></div>
-    </div>
-
-    <!-- Controls -->
-    <div id="controls-panel" class="section">
-        <div class="control-group">
-            <button id="btn-first" title="First Step">⏮</button>
-            <button id="btn-prev" title="Previous Step (Left Arrow)">◀</button>
-            <button id="btn-play" title="Play/Pause (Space)">⏵ Play</button>
-            <button id="btn-next" title="Next Step (Right Arrow)">▶</button>
-        </div>
-        <div class="control-group" style="margin-left: 12px;">
-            <label for="speed-slider" style="font-size: 0.9em;">Speed:</label>
-            <input type="range" id="speed-slider" min="100" max="1000" step="100" value="500" dir="rtl">
-        </div>
-        <div class="status-text">
-            Step <span id="step-counter">0/0</span> | Line <span id="line-counter">-</span>
-        </div>
-    </div>
-
-    <div id="main-container" style="display: flex; flex-direction: row; gap: 16px; flex-grow: 1; overflow: hidden; min-height: 0;">
-        <div id="left-column" style="width: 340px; display: flex; flex-direction: column; overflow-y: auto; padding-right: 4px;">
-            <!-- Step Description -->
-            <div id="step-info" class="section">
-                <div id="step-desc">Ready. Enter input and click Run.</div>
+        <!-- Input Panel -->
+        <div class="panel" id="input-panel">
+            <div class="panel-header">
+                <span>📥 Input</span>
+                <button id="toggle-input-btn" class="icon-btn" style="font-size: 0.8em;">Collapse</button>
             </div>
-
-            <!-- Memory -->
-            <div class="header" style="font-size: 1em; margin-bottom: 8px;">🧠 Memory</div>
-            <div id="memory-panel" class="section" style="flex-grow: 1;">
-                <div class="empty-state">No active variables</div>
-            </div>
-
-            <!-- Call Stack -->
-            <div id="callstack-panel" class="section bottom-panel hidden">
-                <div style="font-weight: 600; margin-bottom: 4px;">📞 Call Stack:</div>
-                <div id="callstack-path" class="breadcrumb"></div>
-            </div>
-
-            <!-- Output -->
-            <div id="output-panel" class="section bottom-panel">
-                <div style="font-weight: 600; margin-bottom: 4px;">📤 Output:</div>
-                <div id="output-area"></div>
+            <div class="panel-content" id="input-area">
+                <textarea id="sample-input" placeholder="Enter std input..."></textarea>
+                <button id="run-btn" style="width: 100%; margin-top: 8px;">▶ Run Code</button>
             </div>
         </div>
         
-        <div id="graph-view" style="flex-grow: 1; position: relative; background: var(--bg-color); border-radius: var(--radius); border: 1px solid var(--border-color); overflow: auto;">
-            <svg id="edges" style="position: absolute; top: 0; left: 0; width: 3000px; height: 3000px; pointer-events: none;">
-                <defs>
-                    <marker id="arrow" viewBox="0 -5 10 10" refX="22" refY="0" markerWidth="8" markerHeight="8" orient="auto">
-                        <path d="M0,-5L10,0L0,5" fill="var(--name-color)"></path>
-                    </marker>
-                </defs>
-            </svg>
-            <div id="nodes" style="position: absolute; top: 0; left: 0; width: 3000px; height: 3000px;"></div>
+        <!-- Controls -->
+        <div class="panel" id="controls-panel">
+            <div class="panel-header">⚙️ Controls</div>
+            <div class="panel-content">
+                <div style="display: flex; gap: 4px; justify-content: center; margin-bottom: 12px;">
+                    <button id="btn-first" class="icon-btn" title="First Step">⏮</button>
+                    <button id="btn-prev" class="icon-btn" title="Previous Step">◀</button>
+                    <button id="btn-play" style="flex-grow: 1;">⏵ Play</button>
+                    <button id="btn-next" class="icon-btn" title="Next Step">▶</button>
+                </div>
+                
+                <div style="display: flex; align-items: center; justify-content: space-between; font-size: 0.9em; margin-bottom: 8px;">
+                    <span style="color: var(--fg-color); opacity: 0.8;">Speed:</span>
+                    <select id="speed-select" style="padding: 2px 4px;">
+                        <option value="1000">0.5X</option>
+                        <option value="500" selected>1X</option>
+                        <option value="250">2X</option>
+                        <option value="167">3X</option>
+                        <option value="125">4X</option>
+                    </select>
+                </div>
+                
+                <div style="display: flex; align-items: center; gap: 8px;">
+                    <span style="font-size: 0.85em; color: var(--fg-color); opacity: 0.8;">Step:</span> <input type="range" id="progress-slider" title="Scrub through execution steps" min="0" max="0" value="0" style="flex-grow: 1; cursor: pointer;">
+                    <span id="step-counter" style="font-family: var(--font-mono); font-size: 0.85em;">0/0</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Memory structure list -->
+        <div class="panel" style="flex-grow: 1; display: flex; flex-direction: column; min-height: 200px;">
+            <div class="panel-header">📋 Variables</div>
+            <div class="panel-content" id="memory-panel" style="flex-grow: 1; overflow-y: auto;">
+                <div class="empty-state" style="opacity: 0.5; font-style: italic;">No active variables</div>
+            </div>
+        </div>
+
+        <!-- Output at the very bottom -->
+        <div class="panel" style="margin-bottom: 0;">
+            <div class="panel-header">📤 Output</div>
+            <div class="panel-content">
+                <div id="output-area" style="font-family: var(--font-mono); white-space: pre-wrap; color: var(--value-color); min-height: 40px; font-size: 0.9em;"></div>
+            </div>
         </div>
     </div>
 
+    <!-- Main View (Right Side) -->
+    <div id="main-view">
+        
+        <!-- Error Panel -->
+        <div id="error-panel" class="panel hidden" style="border-color: #f48771;">
+            <div class="panel-header" style="background: rgba(244, 135, 113, 0.2); color: #f48771;">⚠️ Error</div>
+            <div class="panel-content">
+                <div id="error-msg" style="font-weight: bold; color: #f48771;"></div>
+                <div id="error-line" style="font-family: var(--font-mono); font-size: 0.9em; margin-top: 4px;"></div>
+            </div>
+        </div>
+
+        <div id="main-view-inner">
+            
+            <!-- Graphical Visualizer -->
+            <div class="panel" style="flex-grow: 1; margin-bottom: 0; display: flex; flex-direction: column; min-height: 250px; min-width: 0;">
+                <div class="panel-header" style="justify-content: flex-start; gap: 12px;">
+                    <span style="color: var(--name-color);">Data Structure Visualization</span>
+                    <span id="step-desc" style="font-family: var(--font-mono); font-weight: normal; color: var(--fg-color); opacity: 0.8;"></span>
+                    <span id="line-counter" class="hidden"></span>
+                </div>
+                <div id="graph-view" style="flex-grow: 1; position: relative; background: #1e1e1e; overflow: hidden;">
+                    <svg id="edges" style="position: absolute; top: 0; left: 0; width: 3000px; height: 3000px; pointer-events: none;">
+                        <defs>
+                            <marker id="arrow" viewBox="0 -5 10 10" refX="22" refY="0" markerWidth="8" markerHeight="8" orient="auto">
+                                <path d="M0,-5L10,0L0,5" fill="var(--name-color)"></path>
+                            </marker>
+                        </defs>
+                    </svg>
+                    <div id="nodes" style="position: absolute; top: 0; left: 0; width: 3000px; height: 3000px;"></div>
+                </div>
+            </div>
+
+            <!-- History / Events -->
+            <div id="history-panel" class="panel">
+                <div class="panel-header">⏱️ History / Events</div>
+                <div class="panel-content" id="history-list" style="flex-grow: 1; overflow-y: auto; padding: 8px;">
+                    <div style="opacity: 0.5; font-style: italic; text-align: center; margin-top: 20px;">Run code to see history</div>
+                </div>
+            </div>
+
+            <div id="callstack-panel" class="hidden"><div id="callstack-path"></div></div>
+        </div>
+
+    </div>
+
     <script>
+
         const vscode = acquireVsCodeApi();
 
         class Visualizer {
@@ -772,6 +578,22 @@ function getWebviewContent() {
 
             outputArea.textContent = state.output || '';
             renderMemory(state, prevStep);
+            
+            // Render history
+            const historyList = document.getElementById('history-list');
+            if (historyList) {
+                historyList.innerHTML = '';
+                for (let i = 0; i <= currentStepIndex; i++) {
+                    const s = steps[i];
+                    const div = document.createElement('div');
+                    div.className = 'history-item' + (i === currentStepIndex ? ' active' : '');
+                    div.innerHTML = '<span style="color:#858585; margin-right:8px; font-family: monospace;">' + (s.line||'-') + '</span> <span>' + s.description + '</span>';
+                    div.onclick = () => goToStep(i);
+                    historyList.appendChild(div);
+                }
+                // Scroll to bottom
+                historyList.scrollTop = historyList.scrollHeight;
+            }
 
             if (notifyExtension) {
                 vscode.postMessage({ 
@@ -913,6 +735,7 @@ function getWebviewContent() {
             return prev !== curr;
         }
 
+        
         function renderMemory(state, prevStep) {
             const visualizer = new Visualizer();
             const vars = state.variables || {};
@@ -922,17 +745,22 @@ function getWebviewContent() {
             
             if (declaredVariables.size === 0) {
                 memoryPanel.innerHTML = '<div class="empty-state">No active variables</div>';
+                document.getElementById('nodes').innerHTML = '';
+                document.getElementById('edges').innerHTML = '';
                 return;
             }
 
-            memoryPanel.innerHTML = '';
-            
+            // 1. Setup the Variables Table
+            let tableHtml = '<table style="width: 100%; border-collapse: collapse; text-align: left; font-family: var(--font-mono); font-size: 0.9em;">';
+            tableHtml += '<thead><tr style="border-bottom: 1px solid var(--border-color);"><th style="padding-bottom: 4px;">Name</th><th style="padding-bottom: 4px;">Type</th><th style="padding-bottom: 4px;">Value</th></tr></thead><tbody>';
+
+            // 2. Setup a container for complex structures inside graph-view
+            let structuresHtml = '<div style="display: flex; flex-direction: column; gap: 16px; padding: 16px;">';
+
             Array.from(declaredVariables).sort().forEach(varName => {
                 const isActive = varName in vars;
                 let v = isActive ? vars[varName] : (prevStep && prevStep.variables[varName] ? prevStep.variables[varName] : null);
-                
                 if (!v) return;
-
                 v = { ...v };
 
                 if (v.type) {
@@ -945,51 +773,73 @@ function getWebviewContent() {
 
                 const isHighlighted = (state.highlightVar === varName);
                 const highlightIndex = state.highlightIndex;
-
-                // ── Delta Detection ──
                 const prevVal = prevVars[varName];
                 const valueChanged = isActive && prevVal && didValueChange(prevVal.value, v.value);
 
-                const card = document.createElement('div');
-                let cardClass = 'var-card';
-                if (!isActive) cardClass += ' out-of-scope';
-                if (isHighlighted) cardClass += ' highlight';
-                if (valueChanged) cardClass += ' delta-changed';
-                card.className = cardClass;
+                let rowClass = !isActive ? 'opacity: 0.5;' : '';
+                if (isHighlighted) rowClass += ' background: var(--highlight-bg);';
                 
-                let changeBadge = valueChanged ? '<span class="change-badge"></span>' : '';
-                
-                let content = \`
-                    <div class="var-header">
-                        <span class="var-type">\${v.type || 'auto'}</span>
-                        <span class="var-name">\${varName}\${changeBadge}</span>
-                    </div>
-                \`;
+                let changeIndicator = valueChanged ? '<span style="color:#d7ba7d;">*</span>' : '';
+
+                let displayValue = '';
+                let isComplex = false;
 
                 if (v.isGraphNode) {
                     visualizer.traverse(v.value);
                     visualizer.addPointer(v.value.__id__, varName);
-                    content += \`<div class="var-value-scalar">→ \${v.type}</div>\`;
+                    displayValue = '→ ' + (v.type || 'Node');
                 } else if (v.isMap) {
-                    content += renderMap(v, isHighlighted, highlightIndex);
+                    displayValue = 'size = ' + Object.keys(v.value || {}).length;
+                    isComplex = true;
+                    structuresHtml += '<div class="var-card" style="display:inline-block; margin-bottom:8px;"><div class="var-header"><span class="var-type">' + v.type + '</span> <span class="var-name">' + varName + '</span></div>' + renderMap(v, isHighlighted, highlightIndex) + '</div>';
                 } else if (v.isSet) {
-                    content += renderSet(v, isHighlighted);
+                    displayValue = 'size = ' + ((v.value || []).length);
+                    isComplex = true;
+                    structuresHtml += '<div class="var-card" style="display:inline-block; margin-bottom:8px;"><div class="var-header"><span class="var-type">' + v.type + '</span> <span class="var-name">' + varName + '</span></div>' + renderSet(v, isHighlighted) + '</div>';
                 } else if (v.isStack) {
-                    content += renderStack(v, isHighlighted);
+                    displayValue = 'size = ' + ((v.value || []).length);
+                    isComplex = true;
+                    structuresHtml += '<div class="var-card" style="display:inline-block; margin-bottom:8px;"><div class="var-header"><span class="var-type">' + v.type + '</span> <span class="var-name">' + varName + '</span></div>' + renderStack(v, isHighlighted) + '</div>';
                 } else if (v.isQueue) {
-                    content += renderQueue(v, isHighlighted);
+                    displayValue = 'size = ' + ((v.value || []).length);
+                    isComplex = true;
+                    structuresHtml += '<div class="var-card" style="display:inline-block; margin-bottom:8px;"><div class="var-header"><span class="var-type">' + v.type + '</span> <span class="var-name">' + varName + '</span></div>' + renderQueue(v, isHighlighted) + '</div>';
                 } else if (v.isArray) {
-                    content += renderArray(v, isHighlighted, highlightIndex);
+                    let len = Array.isArray(v.value) ? v.value.length : (v.size || 0);
+                    displayValue = 'size = ' + (len);
+                    isComplex = true;
+                    structuresHtml += '<div class="var-card" style="display:inline-block; margin-bottom:8px;"><div class="var-header"><span class="var-type">' + v.type + '</span> <span class="var-name">' + varName + '</span></div>' + renderArray(v, isHighlighted, highlightIndex) + '</div>';
                 } else {
-                    content += renderScalar(v, isHighlighted);
+                    displayValue = v.value === undefined || v.value === null ? '?' : v.value;
                 }
-                
-                card.innerHTML = content;
-                memoryPanel.appendChild(card);
+
+                tableHtml += '<tr style="' + rowClass + '"><td style="padding: 4px 0; color: var(--name-color);">' + varName + changeIndicator + '</td><td style="padding: 4px 0; color: var(--type-color); font-size: 0.9em;">' + (v.type || 'auto') + '</td><td style="padding: 4px 0; color: var(--value-color);">' + displayValue + '</td></tr>';
             });
             
+            tableHtml += '</tbody></table>';
+            memoryPanel.innerHTML = tableHtml;
+
+            structuresHtml += '</div>';
+
+            // We inject structuresHtml into the graph-view, but we must preserve the nodes and edges SVG!
+            // Let's create a dedicated container for structures if it doesn't exist
+            let structContainer = document.getElementById('complex-structures');
+            if (!structContainer) {
+                structContainer = document.createElement('div');
+                structContainer.id = 'complex-structures';
+                structContainer.style.position = 'absolute';
+                structContainer.style.top = '0';
+                structContainer.style.left = '0';
+                structContainer.style.width = '100%';
+                 // let clicks pass to graph if needed
+                document.getElementById('graph-view').appendChild(structContainer);
+            }
+            structContainer.innerHTML = structuresHtml;
+            
+            // Re-render Graph (linked lists, trees)
             visualizer.render();
         }
+
 
         function showError(msg, line) {
             stopPlay();
@@ -1001,6 +851,7 @@ function getWebviewContent() {
                 errorLine.textContent = 'Check your code and try again.';
             }
         }
+    
     </script>
 </body>
 </html>`;
