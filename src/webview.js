@@ -569,7 +569,8 @@ function getWebviewContent() {
         let playing = false;
         let playInterval = null;
         let speedMs = 500;
-        let declaredVariables = new Set();
+        // FIX B11: use an ordered array (not Set) to preserve declaration order
+        let declaredVariables = [];
 
         // ─── DOM refs ───
         const sampleInput  = document.getElementById('sample-input');
@@ -621,7 +622,7 @@ function getWebviewContent() {
             stopPlay();
             steps = [];
             currentStepIndex = -1;
-            declaredVariables.clear();
+            declaredVariables = [];
             varTbody.innerHTML = '';
             varEmpty.style.display = '';
             varCount.textContent = '';
@@ -653,7 +654,9 @@ function getWebviewContent() {
             switch (msg.command) {
                 case 'loadSteps':
                     steps = msg.steps || [];
-                    declaredVariables.clear();
+                    declaredVariables = [];
+                    // Also clear the history list for a fresh run
+                    historyList.innerHTML = '<div style="opacity:0.4;font-style:italic;text-align:center;padding:20px 8px">Run code to see execution history</div>';
                     goToStep(0);
                     break;
                 case 'error':
@@ -669,7 +672,11 @@ function getWebviewContent() {
         function togglePlay() { playing ? stopPlay() : startPlay(); }
 
         function startPlay() {
-            if (steps.length === 0 || currentStepIndex >= steps.length - 1) return;
+            if (steps.length === 0) return;
+            // FIX B19: if at the last step, wrap back to the beginning before playing
+            if (currentStepIndex >= steps.length - 1) {
+                goToStep(0, false);
+            }
             playing = true;
             btnPlay.textContent = '⏸ Pause';
             playInterval = setInterval(function() {
@@ -715,13 +722,24 @@ function getWebviewContent() {
             }
         }
 
-        // ─── Render history ───
+        // ─── Render history (incremental — only append new items) ───
         function renderHistory() {
-            historyList.innerHTML = '';
-            for (var i = 0; i <= currentStepIndex; i++) {
+            // On first call or reset, the list has a placeholder div — clear it
+            if (historyList.children.length === 1 && historyList.children[0].className !== 'hist-item') {
+                historyList.innerHTML = '';
+            }
+
+            // Remove 'active' class from the previously active item
+            var prevActive = historyList.querySelector('.hist-item.active');
+            if (prevActive) prevActive.classList.remove('active');
+
+            // Append only new items (items beyond what's already in the list)
+            var existingCount = historyList.querySelectorAll('.hist-item').length;
+            for (var i = existingCount; i <= currentStepIndex; i++) {
                 var s = steps[i];
                 var div = document.createElement('div');
-                div.className = 'hist-item' + (i === currentStepIndex ? ' active' : '');
+                div.className = 'hist-item';
+                div.dataset.stepIdx = i;
                 var lineSpan = document.createElement('span');
                 lineSpan.className = 'hist-line';
                 lineSpan.textContent = s.line || '-';
@@ -733,7 +751,13 @@ function getWebviewContent() {
                 (function(idx) { div.onclick = function() { goToStep(idx); }; })(i);
                 historyList.appendChild(div);
             }
-            historyList.scrollTop = historyList.scrollHeight;
+
+            // Mark the current step as active and scroll it into view
+            var items = historyList.querySelectorAll('.hist-item');
+            if (items[currentStepIndex]) {
+                items[currentStepIndex].classList.add('active');
+                items[currentStepIndex].scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+            }
         }
 
         // ─── Render variables table + data structures ───
@@ -742,13 +766,17 @@ function getWebviewContent() {
             var vars = state.variables || {};
             var prevVars = prevStep ? (prevStep.variables || {}) : {};
 
-            Object.keys(vars).forEach(function(v) { declaredVariables.add(v); });
+            // FIX B11: add new variables in declaration order (push if not already present)
+            Object.keys(vars).forEach(function(v) {
+                if (declaredVariables.indexOf(v) === -1) declaredVariables.push(v);
+            });
 
             var activeCount = 0;
             var tbodyHtml = '';
             var cardsHtml = '';
 
-            var sortedVars = Array.from(declaredVariables).sort();
+            // Iterate in declaration order — no sorting
+            var sortedVars = declaredVariables;
 
             sortedVars.forEach(function(name) {
                 var isActive = name in vars;

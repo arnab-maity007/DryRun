@@ -292,6 +292,9 @@ class Interpreter {
             case 'CinStatement':
                 for (const target of node.targets) {
                     if (this.inputPos >= this.inputTokens.length) {
+                        // FIX B18: warn the user instead of silently injecting 0
+                        const targetName = target.name || (target.object && target.object.name) || '?';
+                        this.addStep(node.line, 'input', `⚠️ Input exhausted for ${targetName} — defaulting to 0`);
                         this.inputTokens.push("0");
                     }
                     const token = this.inputTokens[this.inputPos++];
@@ -341,9 +344,29 @@ class Interpreter {
                 this.executeAssignment(node.target, node.operator, node.value, node.line);
                 break;
                 
-            case 'ExpressionStatement':
+            case 'ExpressionStatement': {
+                // Evaluate the expression (may have side effects like push/pop/i++)
                 this.evaluate(node.expression);
+                // Generate a step only for non-trivial standalone expressions
+                // (MethodCall and UpdateExpression already generate steps inside evaluate,
+                //  but AssignmentExpression does too. For bare function calls that return null,
+                //  we add a generic step so the user can see the line was hit.)
+                const exprType = node.expression ? node.expression.type : '';
+                if (exprType === 'FunctionCall') {
+                    // user-defined or builtin function call at statement level - already stepped inside
+                    // just no extra step needed (avoid duplication)
+                } else if (exprType === 'UpdateExpression') {
+                    // i++ / ++i at statement level: add a step with the new value
+                    const argName = node.expression.argument && node.expression.argument.name;
+                    if (argName) {
+                        try {
+                            const newVal = this.getVariable(argName).value;
+                            this.addStep(node.line, 'assign', `${argName} ${node.expression.operator} → ${newVal}`, argName);
+                        } catch { /* variable not found, skip */ }
+                    }
+                }
                 break;
+            }
                 
             case 'IfStatement': {
                 const cond = this.evaluate(node.condition);
@@ -457,6 +480,22 @@ class Interpreter {
                 
             case 'ContinueStatement':
                 throw this.CONTINUE;
+
+            // FIX B21: do-while loop support
+            case 'DoWhileStatement':
+                do {
+                    try {
+                        this.execute(node.body);
+                    } catch (e) {
+                        if (e === this.BREAK) break;
+                        if (e === this.CONTINUE) { /* fall through to condition check */ }
+                        else throw e;
+                    }
+                    const doWhileCond = this.evaluate(node.condition);
+                    this.addStep(node.line, 'loop-check', `Do-while: condition → ${doWhileCond}`);
+                    if (!doWhileCond) break;
+                } while (true);
+                break;
         }
     }
 
@@ -484,31 +523,64 @@ class Interpreter {
             this.addStep(line, 'assign', `${target.name} = ${newVal}`, target.name);
             return newVal;
         } else if (target.type === 'ArrayAccess') {
-            const name = target.object.name;
+            // Resolve the outermost array name even when nested (e.g., grid[i][j])
             const index = this.evaluate(target.index);
-            const v = this.getVariable(name);
             
-            // Map/dict access via [] operator
-            if (v.isMap) {
+            if (target.object.type === 'Identifier') {
+                // Simple 1D: arr[i] = val
+                const name = target.object.name;
+                const v = this.getVariable(name);
+                
+                // Map/dict access via [] operator
+                if (v.isMap) {
+                    let newVal = val;
+                    if (operator === '+=') newVal = (v.value[String(index)] || 0) + val;
+                    else if (operator === '-=') newVal = (v.value[String(index)] || 0) - val;
+                    else if (operator === '*=') newVal = (v.value[String(index)] || 0) * val;
+                    v.value[String(index)] = newVal;
+                    this.addStep(line, 'assign', `${name}[${index}] = ${newVal}`, name);
+                    return newVal;
+                }
+                
                 let newVal = val;
                 if (operator === '+=') newVal = (v.value[index] || 0) + val;
                 else if (operator === '-=') newVal = (v.value[index] || 0) - val;
                 else if (operator === '*=') newVal = (v.value[index] || 0) * val;
-                v.value[String(index)] = newVal;
-                this.addStep(line, 'assign', `${name}[${index}] = ${newVal}`, name);
+                else if (operator === '/=') newVal = Math.trunc((v.value[index] || 0) / val);
+                else if (operator === '%=') newVal = (v.value[index] || 0) % val;
+                
+                v.value[index] = newVal;
+                this.addStep(line, 'assign', `${name}[${index}] = ${newVal}`, name, index);
                 return newVal;
+            } else if (target.object.type === 'ArrayAccess') {
+                // FIX B8: 2D nested array: grid[i][j] = val
+                // Evaluate the inner array first (returns the row array)
+                const outerIndex = this.evaluate(target.object.index);
+                if (target.object.object.type === 'Identifier') {
+                    const name = target.object.object.name;
+                    const v = this.getVariable(name);
+                    if (v.isArray && Array.isArray(v.value)) {
+                        const row = v.value[outerIndex];
+                        if (Array.isArray(row)) {
+                            let newVal = val;
+                            if (operator === '+=') newVal = (row[index] || 0) + val;
+                            else if (operator === '-=') newVal = (row[index] || 0) - val;
+                            else if (operator === '*=') newVal = (row[index] || 0) * val;
+                            else if (operator === '/=') newVal = Math.trunc((row[index] || 0) / val);
+                            else if (operator === '%=') newVal = (row[index] || 0) % val;
+                            row[index] = newVal;
+                            this.addStep(line, 'assign', `${name}[${outerIndex}][${index}] = ${newVal}`, name);
+                            return newVal;
+                        }
+                    }
+                }
+                // Fallback for deeper nesting — evaluate and silently update
+                const parentArr = this.evaluate(target.object);
+                if (Array.isArray(parentArr)) {
+                    parentArr[index] = val;
+                }
+                return val;
             }
-            
-            let newVal = val;
-            if (operator === '+=') newVal = v.value[index] + val;
-            else if (operator === '-=') newVal = v.value[index] - val;
-            else if (operator === '*=') newVal = v.value[index] * val;
-            else if (operator === '/=') newVal = Math.trunc(v.value[index] / val);
-            else if (operator === '%=') newVal = v.value[index] % val;
-            
-            v.value[index] = newVal;
-            this.addStep(line, 'assign', `${name}[${index}] = ${newVal}`, name, index);
-            return newVal;
         }
         throw new Error("Invalid assignment target");
     }
@@ -568,8 +640,9 @@ class Interpreter {
                     case '*': return left * right;
                     case '/': return (typeof left === 'number' && Number.isInteger(left) && typeof right === 'number' && Number.isInteger(right)) ? Math.trunc(left / right) : left / right;
                     case '%': return left % right;
-                    case '==': return left == right;
-                    case '!=': return left != right;
+                    // FIX B23: use strict equality to avoid type-confused comparisons
+                    case '==': return left === right;
+                    case '!=': return left !== right;
                     case '<': return left < right;
                     case '>': return left > right;
                     case '<=': return left <= right;
@@ -604,16 +677,32 @@ class Interpreter {
                     return node.prefix ? newVal : oldVal;
                 } else if (node.argument.type === 'ArrayAccess') {
                     const name = node.argument.object.name;
-                    const index = String(this.evaluate(node.argument.index));
+                    // FIX B6/B7: keep index as number for arrays; only stringify for maps
+                    const index = this.evaluate(node.argument.index);
                     const v = this.getVariable(name);
-                    let oldVal = v.isMap ? (v.value[index] || 0) : v.value[index];
-                    const newVal = node.operator === '++' ? oldVal + 1 : oldVal - 1;
-                    v.value[index] = newVal;
-                    return node.prefix ? newVal : oldVal;
+                    let oldVal;
+                    if (v.isMap) {
+                        oldVal = v.value[String(index)] || 0;
+                        const newVal = node.operator === '++' ? oldVal + 1 : oldVal - 1;
+                        v.value[String(index)] = newVal;
+                        return node.prefix ? newVal : oldVal;
+                    } else {
+                        oldVal = v.value[index];
+                        const newVal = node.operator === '++' ? oldVal + 1 : oldVal - 1;
+                        v.value[index] = newVal;
+                        return node.prefix ? newVal : oldVal;
+                    }
                 }
                 throw new Error("Invalid update target");
             }
                 
+            // FIX B22: Ternary / conditional expression support: a ? b : c
+            case 'ConditionalExpression':
+            case 'TernaryExpression': {
+                const testVal = this.evaluate(node.test || node.condition);
+                return testVal ? this.evaluate(node.consequent) : this.evaluate(node.alternate);
+            }
+
             case 'AssignmentExpression':
                 return this.executeAssignment(node.target, node.operator, node.value, node.line);
                 
