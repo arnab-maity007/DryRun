@@ -1,0 +1,552 @@
+function getWebviewContent() {
+    return `<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DryRun Visualizer</title>
+    <style>
+        :root {
+            --bg-color: var(--vscode-editor-background);
+            --fg-color: var(--vscode-editor-foreground);
+            --border-color: var(--vscode-panel-border);
+            --input-bg: var(--vscode-input-background);
+            --input-fg: var(--vscode-input-foreground);
+            --button-bg: var(--vscode-button-background);
+            --button-fg: var(--vscode-button-foreground);
+            --button-hover: var(--vscode-button-hoverBackground);
+            --card-bg: var(--vscode-editorWidget-background);
+            --card-border: var(--vscode-widget-border);
+            --type-color: var(--vscode-textPreformat-foreground, #6a9955);
+            --name-color: var(--vscode-symbolIcon-variableForeground, #4fc1ff);
+            --value-color: var(--vscode-textBlockQuote-foreground, #ce9178);
+            --highlight-glow: var(--vscode-editor-selectionBackground);
+            --error-bg: var(--vscode-inputValidation-errorBackground);
+            --error-border: var(--vscode-inputValidation-errorBorder);
+            --font-mono: var(--vscode-editor-font-family, "Consolas", "Courier New", monospace);
+            --radius: 6px;
+        }
+
+        body {
+            font-family: var(--vscode-font-family, "Segoe UI", Tahoma, Geneva, Verdana, sans-serif);
+            background-color: var(--bg-color);
+            color: var(--fg-color);
+            padding: 16px;
+            margin: 0;
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+            box-sizing: border-box;
+            overflow-y: auto;
+        }
+
+        .header {
+            font-size: 1.2em;
+            font-weight: 600;
+            margin-bottom: 12px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .section {
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius);
+            padding: 12px;
+            margin-bottom: 12px;
+            background: var(--card-bg);
+        }
+
+        /* Input Panel */
+        #input-panel {
+            transition: all 0.3s ease;
+        }
+        #input-panel.collapsed #input-area {
+            display: none;
+        }
+        #input-area {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            margin-bottom: 8px;
+        }
+        textarea {
+            background-color: var(--input-bg);
+            color: var(--input-fg);
+            border: 1px solid var(--border-color);
+            border-radius: 4px;
+            padding: 8px;
+            font-family: var(--font-mono);
+            min-height: 60px;
+            resize: vertical;
+        }
+        button {
+            background-color: var(--button-bg);
+            color: var(--button-fg);
+            border: none;
+            border-radius: 4px;
+            padding: 6px 12px;
+            cursor: pointer;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 4px;
+            transition: background-color 0.2s;
+        }
+        button:hover {
+            background-color: var(--button-hover);
+        }
+        .header-btn {
+            background: transparent;
+            color: var(--fg-color);
+            border: 1px solid var(--border-color);
+            font-size: 0.9em;
+            padding: 4px 8px;
+        }
+        .header-btn:hover {
+            background: var(--button-hover);
+        }
+
+        /* Error Panel */
+        #error-panel {
+            display: none;
+            background-color: var(--error-bg);
+            border: 1px solid var(--error-border);
+            color: var(--fg-color);
+        }
+        .error-header {
+            font-weight: bold;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 4px;
+        }
+
+        /* Controls */
+        #controls-panel {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            flex-wrap: wrap;
+        }
+        .control-group {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+        input[type="range"] {
+            width: 100px;
+        }
+        .status-text {
+            font-family: var(--font-mono);
+            font-size: 0.9em;
+            margin-left: auto;
+            color: var(--type-color);
+        }
+
+        /* Step Info */
+        #step-info {
+            font-family: var(--font-mono);
+            background: var(--input-bg);
+            border-left: 4px solid var(--name-color);
+        }
+
+        /* Memory Panel */
+        #memory-panel {
+            flex-grow: 1;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 16px;
+            align-items: flex-start;
+            align-content: flex-start;
+            overflow-y: auto;
+        }
+        .var-card {
+            background-color: var(--bg-color);
+            border: 1px solid var(--card-border);
+            border-radius: var(--radius);
+            padding: 8px;
+            min-width: 100px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+        .var-card.out-of-scope {
+            opacity: 0.5;
+            filter: grayscale(100%);
+        }
+        .var-header {
+            display: flex;
+            justify-content: space-between;
+            font-size: 0.85em;
+            margin-bottom: 6px;
+            border-bottom: 1px solid var(--border-color);
+            padding-bottom: 4px;
+        }
+        .var-type {
+            color: var(--type-color);
+            font-family: var(--font-mono);
+        }
+        .var-name {
+            color: var(--name-color);
+            font-weight: bold;
+            font-family: var(--font-mono);
+        }
+        
+        /* Scalars */
+        .var-value-scalar {
+            font-family: var(--font-mono);
+            font-size: 1.5em;
+            text-align: center;
+            color: var(--value-color);
+            padding: 4px;
+        }
+        
+        /* Arrays */
+        .var-value-array {
+            display: flex;
+            gap: 4px;
+            overflow-x: auto;
+            padding-bottom: 4px;
+        }
+        .array-cell-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        .array-cell {
+            border: 1px solid var(--border-color);
+            min-width: 44px;
+            height: 36px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-family: var(--font-mono);
+            color: var(--value-color);
+            background: var(--input-bg);
+            border-radius: 4px;
+        }
+        .array-index {
+            font-size: 0.7em;
+            color: var(--type-color);
+            margin-top: 2px;
+        }
+
+        /* Map Table */
+        .map-table {
+            border-collapse: collapse;
+            width: 100%;
+            margin-top: 4px;
+            font-family: var(--font-mono);
+            font-size: 0.9em;
+        }
+        .map-table th, .map-table td {
+            border: 1px solid var(--border-color);
+            padding: 4px 8px;
+            text-align: center;
+        }
+        .map-table th {
+            background-color: var(--input-bg);
+            color: var(--type-color);
+        }
+        .map-table tr:nth-child(even) {
+            background-color: rgba(0, 0, 0, 0.05);
+        }
+        
+        /* Set Badges */
+        .set-container {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+            padding: 4px 0;
+            align-items: center;
+        }
+        .set-badge {
+            background-color: var(--input-bg);
+            color: var(--value-color);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            padding: 2px 8px;
+            font-family: var(--font-mono);
+            font-size: 0.9em;
+        }
+
+        /* Stack */
+        .stack-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 2px;
+            margin-top: 4px;
+        }
+        .stack-cell-wrapper {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .stack-cell {
+            border: 1px solid var(--name-color);
+            min-width: 44px;
+            height: 30px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-family: var(--font-mono);
+            color: var(--value-color);
+            background: var(--input-bg);
+            border-radius: 2px;
+        }
+        .stack-top-label {
+            font-size: 0.8em;
+            color: var(--type-color);
+            font-family: var(--font-mono);
+        }
+
+        /* Queue */
+        .queue-container {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            margin-top: 4px;
+            overflow-x: auto;
+            padding-bottom: 4px;
+        }
+        .queue-label {
+            font-size: 0.8em;
+            color: var(--type-color);
+            font-family: var(--font-mono);
+            white-space: nowrap;
+        }
+        .queue-cell {
+            border: 1px solid var(--border-color);
+            min-width: 40px;
+            height: 30px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-family: var(--font-mono);
+            color: var(--value-color);
+            background: var(--input-bg);
+            border-radius: 4px;
+        }
+
+        /* Highlight Animations */
+        @keyframes highlight-glow {
+            0% { box-shadow: 0 0 0 2px var(--name-color), 0 0 10px var(--name-color); }
+            100% { box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        }
+        @keyframes cell-glow {
+            0% { background-color: var(--name-color); color: #fff; }
+            100% { background-color: var(--input-bg); color: var(--value-color); }
+        }
+        @keyframes delta-flash {
+            0% { box-shadow: 0 0 0 3px rgba(50, 205, 50, 0.8), 0 0 15px rgba(50, 205, 50, 0.4); }
+            100% { box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        }
+        @keyframes delta-value-flash {
+            0% { background-color: rgba(50, 205, 50, 0.4); color: #fff; }
+            100% { background-color: transparent; color: var(--value-color); }
+        }
+        .highlight {
+            animation: highlight-glow 1s ease-out;
+        }
+        .cell-highlight {
+            animation: cell-glow 1s ease-out;
+        }
+        .delta-changed {
+            animation: delta-flash 1.2s ease-out;
+        }
+        .delta-value {
+            animation: delta-value-flash 1.2s ease-out;
+        }
+        .change-badge {
+            display: inline-block;
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #32cd32;
+            margin-left: 6px;
+            vertical-align: middle;
+            animation: delta-value-flash 1.2s ease-out;
+        }
+
+        /* Call Stack & Output */
+        .bottom-panel {
+            font-family: var(--font-mono);
+        }
+        .breadcrumb {
+            color: var(--name-color);
+            display: inline-flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            align-items: center;
+        }
+        .breadcrumb-item::after {
+            content: "→";
+            color: var(--fg-color);
+            margin-left: 8px;
+        }
+        .breadcrumb-item:last-child::after {
+            content: "";
+        }
+        
+        #output-area {
+            white-space: pre-wrap;
+            color: var(--value-color);
+            min-height: 40px;
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 40px;
+            color: var(--type-color);
+            font-style: italic;
+            width: 100%;
+        }
+        /* Graph View */
+        .visual-node {
+            position: absolute; display: flex; flex-direction: column; align-items: center; justify-content: center;
+            transform: translate(-50%, -50%); background: var(--card-bg); font-weight: bold; box-shadow: 0 4px 6px rgba(0,0,0,0.4);
+            transition: top 0.3s ease, left 0.3s ease;
+            font-family: var(--font-mono); color: var(--value-color);
+        }
+        .tree-node { width: 40px; height: 40px; border-radius: 50%; border: 2px solid var(--name-color); }
+        .list-node { width: 50px; height: 30px; border-radius: 4px; border: 2px solid var(--type-color); }
+        .graph-node { width: 40px; height: 40px; border-radius: 50%; border: 2px solid #c586c0; }
+
+        .pointer-labels {
+            position: absolute; bottom: calc(100% + 8px); display: flex; flex-direction: column-reverse;
+            align-items: center; gap: 4px; white-space: nowrap; pointer-events: none;
+        }
+        .pointer-label { background: var(--name-color); color: var(--bg-color); font-size: 11px; padding: 2px 6px; border-radius: 8px; font-family: monospace; font-weight: bold; }
+        
+        .hidden { display: none !important; }
+    </style>
+</head>
+<body>
+    <div class="header">🔬 DryRun Visualizer</div>
+
+    <!-- Input Panel -->
+    <div id="input-panel" class="section">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+            <div style="font-weight: 600;">📥 Sample Input</div>
+            <button id="toggle-input-btn" class="header-btn">Collapse</button>
+        </div>
+        <div id="input-area">
+            <textarea id="sample-input" placeholder="Enter standard input here..."></textarea>
+            <button id="run-btn">▶ Run</button>
+        </div>
+    </div>
+
+    <!-- Error Panel -->
+    <div id="error-panel" class="section">
+        <div class="error-header">⚠️ Error</div>
+        <div id="error-msg"></div>
+        <div id="error-line" style="font-family: var(--font-mono); font-size: 0.9em; margin-top: 4px;"></div>
+    </div>
+
+    <!-- Controls -->
+    <div id="controls-panel" class="section">
+        <div class="control-group">
+            <button id="btn-first" title="First Step">⏮</button>
+            <button id="btn-prev" title="Previous Step (Left Arrow)">◀</button>
+            <button id="btn-play" title="Play/Pause (Space)">⏵ Play</button>
+            <button id="btn-next" title="Next Step (Right Arrow)">▶</button>
+        </div>
+        <div class="control-group" style="margin-left: 12px; align-items: center;">
+            <label for="speed-select" style="font-size: 0.9em; margin-right: 6px;">Speed:</label>
+            <select id="speed-select" style="background: var(--bg-color); color: var(--fg-color); border: 1px solid var(--border-color); border-radius: 4px; padding: 2px 6px;">
+                <option value="1000">0.5X</option>
+                <option value="500" selected>1X</option>
+                <option value="250">2X</option>
+                <option value="167">3X</option>
+                <option value="125">4X</option>
+            </select>
+        </div>
+        <div class="status-text">
+            Step <span id="step-counter">0/0</span> | Line <span id="line-counter">-</span>
+        </div>
+    </div>
+
+    <div id="main-container" style="display: flex; flex-direction: row; gap: 16px; flex-grow: 1; overflow: hidden; min-height: 0;">
+        <div id="left-column" style="width: 340px; display: flex; flex-direction: column; overflow-y: auto; padding-right: 4px;">
+            <!-- Step Description -->
+            <div id="step-info" class="section">
+                <div id="step-desc">Ready. Enter input and click Run.</div>
+            </div>
+
+            <!-- Memory -->
+            <div class="header" style="font-size: 1em; margin-bottom: 8px;">🧠 Memory</div>
+            <div id="memory-panel" class="section" style="flex-grow: 1;">
+                <div class="empty-state">No active variables</div>
+            </div>
+
+            <!-- Call Stack -->
+            <div id="callstack-panel" class="section bottom-panel hidden">
+                <div style="font-weight: 600; margin-bottom: 4px;">📞 Call Stack:</div>
+                <div id="callstack-path" class="breadcrumb"></div>
+            </div>
+        </div>
+        
+        <div id="graph-view" style="flex-grow: 1; position: relative; background: var(--bg-color); border-radius: var(--radius); border: 1px solid var(--border-color); overflow: auto;">
+            <svg id="edges" style="position: absolute; top: 0; left: 0; width: 3000px; height: 3000px; pointer-events: none;">
+                <defs>
+                    <marker id="arrow" viewBox="0 -5 10 10" refX="22" refY="0" markerWidth="8" markerHeight="8" orient="auto">
+                        <path d="M0,-5L10,0L0,5" fill="var(--name-color)"></path>
+                    </marker>
+                </defs>
+            </svg>
+            <div id="nodes" style="position: absolute; top: 0; left: 0; width: 3000px; height: 3000px;"></div>
+        </div>
+    </div>
+
+    <!-- Output -->
+    <div id="output-panel" class="section" style="margin-top: 16px; min-height: 80px; max-height: 150px; overflow-y: auto;">
+        <div style="font-weight: 600; margin-bottom: 4px;">📤 Output:</div>
+        <div id="output-area"></div>
+    </div>
+
+    <script>
+        const vscode = acquireVsCodeApi();
+
+        class Visualizer {
+            constructor() {
+                this.svgHtml = '<defs><marker id="arrow" viewBox="0 -5 10 10" refX="22" refY="0" markerWidth="8" markerHeight="8" orient="auto"><path d="M0,-5L10,0L0,5" fill="var(--name-color)"></path></marker></defs>';
+                this.nodesHtml = '';
+                this.graphNodes = new Map(); 
+                this.graphEdges = []; 
+                this.pointers = new Map(); 
+            }
+
+            addPointer(nodeId, varName) {
+                if (!this.pointers.has(nodeId)) {
+                    this.pointers.set(nodeId, []);
+                }
+                this.pointers.get(nodeId).push(varName);
+            }
+
+            traverse(node, visited = new Set()) {
+                if (!node || typeof node !== 'object' || !node.__id__) return;
+                if (visited.has(node.__id__)) return;
+                visited.add(node.__id__);
+                
+                if (!this.graphNodes.has(node.__id__)) {
+                    this.graphNodes.set(node.__id__, {
+                        val: node.val ?? node.value ?? node.data ?? '?',
+                        type: node.__type__, x: 0, y: 0 
+                    });
+                }
+
+                ['next', 'left', 'right'].forEach(prop => {
+                    if (node[prop] && typeof node[prop] === 'object' && node[prop].__id__) {
+                        const edgeExists = this.graphEdges.some(e => e.source === node.__id__ && e.target === node[prop].__id__);
+                        if (!edgeExists) {
+                            this.graphEdges.push({ source: node.__id__, target: node[prop].__id__, type: prop });
+                            this.traverse(node[prop], visited);
+                        }
+                    }
+                });
+                
+                // For adjacency lists (e.g. neighbors list)
+            }
+        }

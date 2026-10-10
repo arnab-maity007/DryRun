@@ -8,6 +8,9 @@ export default [{
             console: "readonly",
             process: "readonly",
             __dirname: "readonly",
+            setTimeout: "readonly",
+            setInterval: "readonly",
+            clearInterval: "readonly",
             suite: "readonly",
             test: "readonly"
         },
