@@ -82,8 +82,13 @@ function activate(context) {
                     pythonProcess.kill();
                     pythonProcess = null;
                 }
-                editor.setDecorations(activeLineDecoration, []);
-                editor.setDecorations(deltaFlashDecoration, []);
+                // FIX B2: re-resolve active editor instead of using potentially stale closure
+                const activeEditor = vscode.window.activeTextEditor;
+                if (activeEditor) {
+                    activeEditor.setDecorations(activeLineDecoration, []);
+                    activeEditor.setDecorations(deltaFlashDecoration, []);
+                }
+                lastHighlightedLine = -1;
             });
 
             currentPanel.webview.html = getWebviewContent();
@@ -92,7 +97,8 @@ function activate(context) {
                 (message) => {
                     switch (message.command) {
                         case "ready":
-                            runCode(editor, filePath, language, "", context);
+                            // FIX B1: don't auto-run on ready — just wait for user to click Run.
+                            // The webview shows its idle/empty state until the user provides input and clicks Run.
                             break;
                         case "requestRun":
                             runCode(editor, filePath, language, message.input || "", context);
@@ -107,6 +113,7 @@ function activate(context) {
             );
         } else {
             currentPanel.reveal(vscode.ViewColumn.Two);
+            // When re-opening for a new file, run immediately with empty input as a preview
             runCode(editor, filePath, language, "", context);
         }
     });
